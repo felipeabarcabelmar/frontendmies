@@ -278,8 +278,18 @@ export default function App() {
   const [adminActiveTab, setAdminActiveTab] = useState<'Usuarios' | 'Perfiles'>('Usuarios');
 
   // --- DATOS GLOBALES Y MODAL DE LECTURA ---
-  const [artList, setArtList] = useState<FormularioART[]>([]);
+  const [artList, setArtList] = useState<FormularioART[]>(() => {
+    const saved = localStorage.getItem('mies_art_list');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return [];
+  });
   const [selectedArtForModal, setSelectedArtForModal] = useState<FormularioART | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('mies_art_list', JSON.stringify(artList));
+  }, [artList]);
 
   // --- FILTROS DE HISTORIAL ---
   const [filterSearch, setFilterSearch] = useState<string>('');
@@ -497,13 +507,38 @@ export default function App() {
           }));
           setArtList([...listParsed, ...initialSeedARTs]);
         } else {
+          const saved = localStorage.getItem('mies_art_list');
+          if (saved) {
+            try {
+              const parsed = JSON.parse(saved);
+              if (parsed.length > 0) {
+                setArtList(parsed);
+                return;
+              }
+            } catch (e) {}
+          }
           setArtList(initialSeedARTs);
         }
       } else {
+        const saved = localStorage.getItem('mies_art_list');
+        if (saved) {
+          try {
+            setArtList(JSON.parse(saved));
+            return;
+          } catch (e) {}
+        }
         setArtList(initialSeedARTs);
       }
     } catch (err) {
-      console.warn('Persistencia real offline. Cargando datos emulados de forma local.');
+      console.warn('Persistencia real offline. Cargando datos desde localStorage.');
+      console.error('Error al conectar con la API:', err);
+      const saved = localStorage.getItem('mies_art_list');
+      if (saved) {
+        try {
+          setArtList(JSON.parse(saved));
+          return;
+        } catch (e) {}
+      }
       setArtList(initialSeedARTs);
     }
   };
