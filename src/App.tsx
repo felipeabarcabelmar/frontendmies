@@ -629,6 +629,7 @@ export default function App() {
     setIsLoggedIn(false);
     setCurrentUser(null);
     setLoginPassword('');
+    setSelectedArtForModal(null);
   };
 
   // --- PERMISOS DE PANTALLAS ---
@@ -1209,7 +1210,10 @@ export default function App() {
             <li>
               <button
                 className={`menu-item ${currentView === 'Dashboard' ? 'active' : ''}`}
-                onClick={() => setCurrentView('Dashboard')}
+                onClick={() => {
+                  setCurrentView('Dashboard');
+                  setSelectedArtForModal(null);
+                }}
               >
                 <span className="menu-item-icon">📊</span>
                 <span className="menu-item-text">Panel de Control</span>
@@ -1223,6 +1227,7 @@ export default function App() {
                 onClick={() => {
                   setCurrentView('Formulario');
                   handleWizardReset();
+                  setSelectedArtForModal(null);
                 }}
               >
                 <span className="menu-item-icon">📝</span>
@@ -1234,7 +1239,10 @@ export default function App() {
             <li>
               <button
                 className={`menu-item ${currentView === 'Historial' ? 'active' : ''}`}
-                onClick={() => setCurrentView('Historial')}
+                onClick={() => {
+                  setCurrentView('Historial');
+                  setSelectedArtForModal(null);
+                }}
               >
                 <span className="menu-item-icon">🗂️</span>
                 <span className="menu-item-text">Historial de Formularios</span>
@@ -1249,6 +1257,7 @@ export default function App() {
                   setCurrentView('Administración');
                   if (hasAccess('Usuarios')) setAdminActiveTab('Usuarios');
                   else setAdminActiveTab('Perfiles');
+                  setSelectedArtForModal(null);
                 }}
               >
                 <span className="menu-item-icon">⚙️</span>
