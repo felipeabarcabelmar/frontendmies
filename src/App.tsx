@@ -255,6 +255,8 @@ function SignaturePad({ value, onChange, placeholder = "Firme aquí con su dedo 
   );
 }
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+
 export default function App() {
   // --- ESTADOS DE SESIÓN Y LOGIN ---
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
@@ -477,7 +479,7 @@ export default function App() {
   // --- FETCH DE DATOS API DESDE BACKEND CON CORS CONFIGURADO ---
   const fetchARTs = async () => {
     try {
-      const res = await fetch('http://localhost:8080/api/v1/formularios-art');
+      const res = await fetch(`${API_BASE_URL}/formularios-art`);
       if (res.ok) {
         const data = await res.json();
         if (data && data.length > 0) {
@@ -517,7 +519,7 @@ export default function App() {
       return;
     }
     try {
-      const res = await fetch(`http://localhost:8080/api/v1/formularios-art/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/formularios-art/${id}`, {
         method: 'DELETE'
       });
       if (res.ok) {
@@ -539,7 +541,7 @@ export default function App() {
 
   const handleToggleActivo = async (id: string) => {
     try {
-      const res = await fetch(`http://localhost:8080/api/v1/formularios-art/${id}/toggle-activo`, {
+      const res = await fetch(`${API_BASE_URL}/formularios-art/${id}/toggle-activo`, {
         method: 'PUT'
       });
       if (res.ok) {
@@ -952,7 +954,7 @@ export default function App() {
     };
 
     try {
-      const response = await fetch('http://localhost:8080/api/v1/formularios-art', {
+      const response = await fetch(`${API_BASE_URL}/formularios-art`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
