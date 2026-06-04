@@ -114,6 +114,7 @@ interface ProfilePermissions {
     Historial: boolean;
     Usuarios: boolean;
     Perfiles: boolean;
+    RevisionTecnica: boolean;
   };
 }
 
@@ -274,7 +275,7 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null);
 
   // --- NAVEGACIÓN Y TABS ---
-  const [currentView, setCurrentView] = useState<'Dashboard' | 'Formulario' | 'Historial' | 'Administración'>('Dashboard');
+  const [currentView, setCurrentView] = useState<'Dashboard' | 'Formulario' | 'Historial' | 'Administración' | 'RevisionTecnica'>('Dashboard');
   const [adminActiveTab, setAdminActiveTab] = useState<'Usuarios' | 'Perfiles'>('Usuarios');
 
   // --- DATOS GLOBALES Y MODAL DE LECTURA ---
@@ -302,15 +303,15 @@ export default function App() {
   const [profilePermissions, setProfilePermissions] = useState<ProfilePermissions[]>([
     {
       rol: 'Administrador',
-      screens: { Dashboard: true, Formulario: true, Historial: true, Usuarios: true, Perfiles: true }
+      screens: { Dashboard: true, Formulario: true, Historial: true, Usuarios: true, Perfiles: true, RevisionTecnica: true }
     },
     {
       rol: 'Supervisor',
-      screens: { Dashboard: true, Formulario: true, Historial: true, Usuarios: false, Perfiles: false }
+      screens: { Dashboard: true, Formulario: true, Historial: true, Usuarios: false, Perfiles: false, RevisionTecnica: true }
     },
     {
       rol: 'Operador',
-      screens: { Dashboard: false, Formulario: true, Historial: false, Usuarios: false, Perfiles: false }
+      screens: { Dashboard: false, Formulario: true, Historial: false, Usuarios: false, Perfiles: false, RevisionTecnica: false }
     }
   ]);
 
@@ -546,6 +547,8 @@ export default function App() {
   useEffect(() => {
     if (isLoggedIn) {
       fetchARTs();
+      fetchVehiculos();
+      fetchMantenedores();
     }
   }, [isLoggedIn]);
 
@@ -918,6 +921,391 @@ export default function App() {
     { nombre: '', cargo: 'Técnico Operador', confirmo_condiciones: true, firma: '' }
   ]);
 
+  // ==========================================
+  // --- ESTADOS Y MODELOS: REVISIÓN TÉCNICA ---
+  // ==========================================
+  
+  interface VehiculoEquipo {
+    id: string;
+    tipo: string; // 'camion' | 'camioneta' | 'equipo'
+    patente: string;
+    faena: string;
+    contratista: string;
+    fotoUrl: string | null;
+    fechaRT: string | null;
+    fechaVencimientoRT: string | null;
+    numCertificado: string | null;
+    fechaEmisionCertificado: string | null;
+    fechaVencimientoCertificado: string | null;
+    fechaVencimientoPermisoCirc: string | null;
+    minaFechaControl: string | null;
+    minaFechaVencimiento: string | null;
+    diasParaRT?: number | null;
+    diasParaCertificado?: number | null;
+    diasParaPermisoCirc?: number | null;
+    diasParaMinaControl?: number | null;
+    estadoRT: 'vigente' | 'cordinar envió' | 'vencido';
+    estadoMina: 'vigente' | 'cordinar envió' | 'vencido';
+  }
+
+  interface RegistroKilometraje {
+    id: string;
+    vehiculoId: string;
+    fecha: string;
+    kilometraje: number;
+  }
+
+  interface Mantenedor {
+    id: string;
+    categoria: string;
+    valor: string;
+  }
+  // --- RECT STATES ---
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [vehiculos, setVehiculos] = useState<VehiculoEquipo[]>([]);
+  const [mantenedores, setMantenedores] = useState<Mantenedor[]>([]);
+
+  const [selectedVehiculo, setSelectedVehiculo] = useState<VehiculoEquipo | null>(null);
+  const [viewType, setViewType] = useState<'cards' | 'grid'>('cards');
+  const [selectedTipoTab, setSelectedTipoTab] = useState<'camion' | 'camioneta' | 'equipo'>('camion');
+
+  // Filtros
+  const [filterVehiculoSearch, setFilterVehiculoSearch] = useState<string>('');
+  const [filterVehiculoEstado, setFilterVehiculoEstado] = useState<string>('ALL');
+  const [filterVehiculoFaena, setFilterVehiculoFaena] = useState<string>('ALL');
+  const [filterVehiculoContratista, setFilterVehiculoContratista] = useState<string>('ALL');
+
+  // Modales
+  const [showVehiculoModal, setShowVehiculoModal] = useState<boolean>(false);
+  const [editModeVehiculo, setEditModeVehiculo] = useState<VehiculoEquipo | null>(null);
+  const [showMantenedoresModal, setShowMantenedoresModal] = useState<boolean>(false);
+
+  // Kilometraje
+  const [kilometrajesList, setKilometrajesList] = useState<RegistroKilometraje[]>([]);
+  const [currentKilometrajeDate, setCurrentKilometrajeDate] = useState<string>('');
+  const [currentKilometrajeVal, setCurrentKilometrajeVal] = useState<number>(0);
+  const [showKilometrajeInputModal, setShowKilometrajeInputModal] = useState<boolean>(false);
+  const [mileageMonthOffset, setMileageMonthOffset] = useState<number>(0);
+
+  // Formulario vehículo
+  const [formVehTipo, setFormVehTipo] = useState<string>('camion');
+  const [formVehPatente, setFormVehPatente] = useState<string>('');
+  const [formVehFaena, setFormVehFaena] = useState<string>('');
+  const [formVehContratista, setFormVehContratista] = useState<string>('');
+  const [formVehFotoUrl, setFormVehFotoUrl] = useState<string>('');
+  const [formVehFechaRT, setFormVehFechaRT] = useState<string>('');
+  const [formVehFechaVencimientoRT, setFormVehFechaVencimientoRT] = useState<string>('');
+  const [formVehNumCertificado, setFormVehNumCertificado] = useState<string>('');
+  const [formVehFechaEmisionCert, setFormVehFechaEmisionCert] = useState<string>('');
+  const [formVehFechaVencimientoCert, setFormVehFechaVencimientoCert] = useState<string>('');
+  const [formVehFechaVencimientoPermisoCirc, setFormVehFechaVencimientoPermisoCirc] = useState<string>('');
+  const [formVehMinaFechaControl, setFormVehMinaFechaControl] = useState<string>('');
+  const [formVehMinaFechaVencimiento, setFormVehMinaFechaVencimiento] = useState<string>('');
+
+  // Formulario mantenedores
+  const [formMantCategoria, setFormMantCategoria] = useState<string>('faena');
+  const [formMantValor, setFormMantValor] = useState<string>('');
+
+
+
+  // --- CAPA DE SERVICIO API VEHÍCULOS ---
+
+  const fetchVehiculos = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/vehiculos-equipos`);
+      if (res.ok) {
+        const data = await res.json();
+        setVehiculos(data || []);
+        setDbError(null);
+      } else {
+        setDbError('Error al cargar la lista de vehículos desde la base de datos.');
+      }
+    } catch (err) {
+      console.error(err);
+      setDbError('No se pudo conectar con la base de datos remota para cargar los vehículos.');
+    }
+  };
+
+  const fetchMantenedores = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenedores`);
+      if (res.ok) {
+        const data = await res.json();
+        setMantenedores(data || []);
+        setDbError(null);
+      } else {
+        setDbError('Error al cargar los mantenedores desde la base de datos.');
+      }
+    } catch (err) {
+      console.error(err);
+      setDbError('No se pudo conectar con la base de datos remota para cargar los mantenedores.');
+    }
+  };
+
+  const fetchKilometrajes = async (vehiculoId: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/vehiculos-equipos/${vehiculoId}/kilometraje`);
+      if (res.ok) {
+        const data = await res.json();
+        setKilometrajesList(data || []);
+        setDbError(null);
+        return;
+      } else {
+        setDbError('Error al cargar el kilometraje del vehículo desde la base de datos.');
+      }
+    } catch (err) {
+      console.error(err);
+      setDbError('No se pudo conectar con la base de datos remota para cargar el kilometraje.');
+    }
+    setKilometrajesList([]);
+  };
+
+  const handleSaveVehiculo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formVehPatente || !formVehFaena || !formVehContratista) return;
+
+    const payload = {
+      tipo: formVehTipo,
+      patente: formVehPatente,
+      faena: formVehFaena,
+      contratista: formVehContratista,
+      fotoUrl: formVehFotoUrl || null,
+      fechaRT: formVehFechaRT || null,
+      fechaVencimientoRT: formVehFechaVencimientoRT || null,
+      numCertificado: formVehNumCertificado || null,
+      fechaEmisionCertificado: formVehFechaEmisionCert || null,
+      fechaVencimientoCertificado: formVehFechaVencimientoCert || null,
+      fechaVencimientoPermisoCirc: formVehFechaVencimientoPermisoCirc || null,
+      minaFechaControl: formVehMinaFechaControl || null,
+      minaFechaVencimiento: formVehMinaFechaVencimiento || null
+    };
+
+    try {
+      let res;
+      if (editModeVehiculo) {
+        res = await fetch(`${API_BASE_URL}/vehiculos-equipos/${editModeVehiculo.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        res = await fetch(`${API_BASE_URL}/vehiculos-equipos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      if (res.ok) {
+        await fetchVehiculos();
+        setShowVehiculoModal(false);
+        setEditModeVehiculo(null);
+        setDbError(null);
+        return;
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        setDbError(errorData.mensaje || 'Error al guardar el vehículo/equipo en la base de datos.');
+      }
+    } catch (err) {
+      console.error('Error al guardar en el servidor:', err);
+      setDbError('Error de red: No se pudo conectar al servidor para guardar el vehículo/equipo.');
+    }
+  };
+
+  const handleDeleteVehiculo = async (id: string) => {
+    if (!window.confirm('¿Está seguro de que desea eliminar este registro de vehículo/equipo?')) return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/vehiculos-equipos/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        await fetchVehiculos();
+        setSelectedVehiculo(null);
+        setDbError(null);
+        return;
+      } else {
+        setDbError('Error al eliminar el vehículo/equipo de la base de datos.');
+      }
+    } catch (err) {
+      console.error(err);
+      setDbError('Error de red: No se pudo conectar al servidor para eliminar el vehículo/equipo.');
+    }
+  };
+
+  const handleSaveKilometraje = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedVehiculo || !currentKilometrajeDate || currentKilometrajeVal < 0) return;
+
+    const payload = {
+      fecha: currentKilometrajeDate,
+      kilometraje: Number(currentKilometrajeVal)
+    };
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/vehiculos-equipos/${selectedVehiculo.id}/kilometraje`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        await fetchKilometrajes(selectedVehiculo.id);
+        setShowKilometrajeInputModal(false);
+        setDbError(null);
+        return;
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        setDbError(errorData.mensaje || 'Error al registrar el kilometraje en la base de datos.');
+      }
+    } catch (err) {
+      console.error(err);
+      setDbError('Error de red: No se pudo conectar al servidor para registrar el kilometraje.');
+    }
+  };
+
+  const handleSaveMantenedor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formMantValor) return;
+
+    const payload = {
+      categoria: formMantCategoria,
+      valor: formMantValor
+    };
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenedores`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        await fetchMantenedores();
+        setFormMantValor('');
+        setDbError(null);
+        return;
+      } else {
+        setDbError('Error al registrar el mantenedor en la base de datos.');
+      }
+    } catch (err) {
+      console.error(err);
+      setDbError('Error de red: No se pudo conectar al servidor para registrar el mantenedor.');
+    }
+  };
+
+  const handleDeleteMantenedor = async (id: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenedores/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        await fetchMantenedores();
+        setDbError(null);
+        return;
+      } else {
+        setDbError('Error al eliminar el mantenedor de la base de datos.');
+      }
+    } catch (err) {
+      console.error(err);
+      setDbError('Error de red: No se pudo conectar al servidor para eliminar el mantenedor.');
+    }
+  };
+
+  const openCreateVehiculoModal = () => {
+    setEditModeVehiculo(null);
+    setFormVehTipo('camion');
+    setFormVehPatente('');
+    
+    // Asignar primer valor del mantenedor si existe
+    const faenas = mantenedores.filter(m => m.categoria === 'faena');
+    setFormVehFaena(faenas.length > 0 ? faenas[0].valor : 'Codelco Andina');
+    
+    const contras = mantenedores.filter(m => m.categoria === 'contratista');
+    setFormVehContratista(contras.length > 0 ? contras[0].valor : 'MIES');
+    
+    setFormVehFotoUrl('');
+    setFormVehFechaRT('');
+    setFormVehFechaVencimientoRT('');
+    setFormVehNumCertificado('');
+    setFormVehFechaEmisionCert('');
+    setFormVehFechaVencimientoCert('');
+    setFormVehFechaVencimientoPermisoCirc('');
+    setFormVehMinaFechaControl('');
+    setFormVehMinaFechaVencimiento('');
+    setShowVehiculoModal(true);
+  };
+
+  const openEditVehiculoModal = (v: VehiculoEquipo) => {
+    setEditModeVehiculo(v);
+    setFormVehTipo(v.tipo);
+    setFormVehPatente(v.patente);
+    setFormVehFaena(v.faena);
+    setFormVehContratista(v.contratista);
+    setFormVehFotoUrl(v.fotoUrl || '');
+    setFormVehFechaRT(v.fechaRT || '');
+    setFormVehFechaVencimientoRT(v.fechaVencimientoRT || '');
+    setFormVehNumCertificado(v.numCertificado || '');
+    setFormVehFechaEmisionCert(v.fechaEmisionCertificado || '');
+    setFormVehFechaVencimientoCert(v.fechaVencimientoCertificado || '');
+    setFormVehFechaVencimientoPermisoCirc(v.fechaVencimientoPermisoCirc || '');
+    setFormVehMinaFechaControl(v.minaFechaControl || '');
+    setFormVehMinaFechaVencimiento(v.minaFechaVencimiento || '');
+    setShowVehiculoModal(true);
+  };
+
+  const getCalendarDays = () => {
+    const date = new Date();
+    date.setDate(1);
+    date.setMonth(date.getMonth() + mileageMonthOffset);
+    
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    
+    const firstDayIndex = (new Date(year, month, 1).getDay() + 6) % 7;
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    
+    const prevLastDay = new Date(year, month, 0).getDate();
+    
+    const days = [];
+    
+    for (let i = firstDayIndex; i > 0; i--) {
+      const prevMonth = month === 0 ? 11 : month - 1;
+      const prevYear = month === 0 ? year - 1 : year;
+      const dayStr = String(prevLastDay - i + 1).padStart(2, '0');
+      const monthStr = String(prevMonth + 1).padStart(2, '0');
+      days.push({
+        dateStr: `${prevYear}-${monthStr}-${dayStr}`,
+        dayNum: prevLastDay - i + 1,
+        isCurrentMonth: false
+      });
+    }
+    
+    for (let i = 1; i <= lastDay; i++) {
+      const monthStr = String(month + 1).padStart(2, '0');
+      const dayStr = String(i).padStart(2, '0');
+      days.push({
+        dateStr: `${year}-${monthStr}-${dayStr}`,
+        dayNum: i,
+        isCurrentMonth: true
+      });
+    }
+    
+    const totalCells = 42;
+    const nextMonthPadding = totalCells - days.length;
+    for (let i = 1; i <= nextMonthPadding; i++) {
+      const nextMonth = month === 11 ? 0 : month + 1;
+      const nextYear = month === 11 ? year + 1 : year;
+      const dayStr = String(i).padStart(2, '0');
+      const monthStr = String(nextMonth + 1).padStart(2, '0');
+      days.push({
+        dateStr: `${nextYear}-${monthStr}-${dayStr}`,
+        dayNum: i,
+        isCurrentMonth: false
+      });
+    }
+    
+    return { days, year, month };
+  };
+
   // --- HELPERS Y FUNCIONES DE CONTROL DE RIESGOS ---
   const isAnyGreenCardTriggered = () => {
     return (
@@ -1127,6 +1515,27 @@ export default function App() {
   const rejectedCount = filteredARTs.filter(a => a.estado === 'REJECTED_BY_CRITICAL_CONTROL').length;
   const rateRejected = totalCount > 0 ? ((rejectedCount / totalCount) * 100).toFixed(1) : '0.0';
 
+  // --- MÉTRICAS DE FLOTA VEHÍCULOS / EQUIPOS ---
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+
+  const vehiculosConRTVencida = vehiculos.filter(v => 
+    v.tipo !== 'equipo' && 
+    v.fechaVencimientoRT && 
+    new Date(v.fechaVencimientoRT) < todayDate
+  );
+
+  const equiposConCertVencido = vehiculos.filter(v => 
+    v.tipo === 'equipo' && 
+    v.fechaVencimientoCertificado && 
+    new Date(v.fechaVencimientoCertificado) < todayDate
+  );
+
+  const vehiculosConPCVencido = vehiculos.filter(v => 
+    v.fechaVencimientoPermisoCirc && 
+    new Date(v.fechaVencimientoPermisoCirc) < todayDate
+  );
+
   const supervisoresUnicos = Array.from(new Set(artList.map(a => a.paso1Planificacion.supervisor_asigna))).filter(Boolean);
 
   // --- RENDERS DE SUB-VISTAS ---
@@ -1246,6 +1655,21 @@ export default function App() {
               >
                 <span className="menu-item-icon">🗂️</span>
                 <span className="menu-item-text">Historial de Formularios</span>
+              </button>
+            </li>
+          )}
+          {hasAccess('RevisionTecnica') && (
+            <li>
+              <button
+                className={`menu-item ${currentView === 'RevisionTecnica' ? 'active' : ''}`}
+                onClick={() => {
+                  setCurrentView('RevisionTecnica');
+                  setSelectedArtForModal(null);
+                  setSelectedVehiculo(null);
+                }}
+              >
+                <span className="menu-item-icon">🚚</span>
+                <span className="menu-item-text">Revisión Técnica</span>
               </button>
             </li>
           )}
@@ -1913,6 +2337,106 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* VEHICLES AND FLOTA KPI GRID */}
+                <h3 className="text-lg font-bold mb-4 mt-8 text-slate-800 dark:text-white flex items-center gap-2">
+                  <span>📊</span> Alertas de Flota y Control de Equipos MIES
+                </h3>
+                <div className="kpi-grid mb-6">
+                  <div className="kpi-card" style={{ borderLeft: '5px solid var(--error-red)' }}>
+                    <span className="kpi-label" style={{ fontWeight: '600' }}>Vehículos con RT Vencida</span>
+                    <span className="kpi-value" style={{ color: 'var(--error-red)', fontSize: '2rem', display: 'block', margin: '5px 0' }}>
+                      {vehiculosConRTVencida.length}
+                    </span>
+                    <span className="kpi-desc" style={{ fontSize: '0.85rem', color: 'var(--text-color-secondary)' }}>
+                      {vehiculosConRTVencida.length > 0 ? (
+                        <>
+                          Patentes:{' '}
+                          {vehiculosConRTVencida.map((v, i) => (
+                            <span key={v.id}>
+                              {i > 0 && ', '}
+                              <button
+                                onClick={() => {
+                                  setCurrentView('RevisionTecnica');
+                                  setSelectedTipoTab(v.tipo as 'camion' | 'camioneta' | 'equipo');
+                                  setSelectedVehiculo(v);
+                                }}
+                                style={{ background: 'none', border: 'none', padding: 0, color: 'var(--primary-color)', textDecoration: 'underline', cursor: 'pointer', fontWeight: '500' }}
+                                title="Ver detalles del vehículo"
+                              >
+                                {v.patente}
+                              </button>
+                            </span>
+                          ))}
+                        </>
+                      ) : (
+                        'No hay vehículos con RT vencida'
+                      )}
+                    </span>
+                  </div>
+                  <div className="kpi-card" style={{ borderLeft: '5px solid #ea580c' }}>
+                    <span className="kpi-label" style={{ fontWeight: '600' }}>Equipos con Certificado Vencido</span>
+                    <span className="kpi-value" style={{ color: '#ea580c', fontSize: '2rem', display: 'block', margin: '5px 0' }}>
+                      {equiposConCertVencido.length}
+                    </span>
+                    <span className="kpi-desc" style={{ fontSize: '0.85rem', color: 'var(--text-color-secondary)' }}>
+                      {equiposConCertVencido.length > 0 ? (
+                        <>
+                          Equipos:{' '}
+                          {equiposConCertVencido.map((v, i) => (
+                            <span key={v.id}>
+                              {i > 0 && ', '}
+                              <button
+                                onClick={() => {
+                                  setCurrentView('RevisionTecnica');
+                                  setSelectedTipoTab(v.tipo as 'camion' | 'camioneta' | 'equipo');
+                                  setSelectedVehiculo(v);
+                                }}
+                                style={{ background: 'none', border: 'none', padding: 0, color: 'var(--primary-color)', textDecoration: 'underline', cursor: 'pointer', fontWeight: '500' }}
+                                title="Ver detalles del equipo"
+                              >
+                                {v.patente}
+                              </button>
+                            </span>
+                          ))}
+                        </>
+                      ) : (
+                        'No hay equipos con certificado vencido'
+                      )}
+                    </span>
+                  </div>
+                  <div className="kpi-card" style={{ borderLeft: '5px solid #7c3aed' }}>
+                    <span className="kpi-label" style={{ fontWeight: '600' }}>Permisos de Circulación Vencidos</span>
+                    <span className="kpi-value" style={{ color: '#7c3aed', fontSize: '2rem', display: 'block', margin: '5px 0' }}>
+                      {vehiculosConPCVencido.length}
+                    </span>
+                    <span className="kpi-desc" style={{ fontSize: '0.85rem', color: 'var(--text-color-secondary)' }}>
+                      {vehiculosConPCVencido.length > 0 ? (
+                        <>
+                          Patentes:{' '}
+                          {vehiculosConPCVencido.map((v, i) => (
+                            <span key={v.id}>
+                              {i > 0 && ', '}
+                              <button
+                                onClick={() => {
+                                  setCurrentView('RevisionTecnica');
+                                  setSelectedTipoTab(v.tipo as 'camion' | 'camioneta' | 'equipo');
+                                  setSelectedVehiculo(v);
+                                }}
+                                style={{ background: 'none', border: 'none', padding: 0, color: 'var(--primary-color)', textDecoration: 'underline', cursor: 'pointer', fontWeight: '500' }}
+                                title="Ver detalles del vehículo/equipo"
+                              >
+                                {v.patente}
+                              </button>
+                            </span>
+                          ))}
+                        </>
+                      ) : (
+                        'No hay permisos vencidos'
+                      )}
+                    </span>
+                  </div>
+                </div>
+
                 {/* RECENT ACTIVITY LOG SECTION */}
                 <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm">
                   <h3 className="text-lg font-bold mb-4 text-slate-800 dark:text-white flex items-center gap-2">
@@ -1953,6 +2477,643 @@ export default function App() {
                     Ver Historial Completo de Formularios →
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* VIEW: REVISIÓN TÉCNICA Y GESTIÓN DE VEHÍCULOS */}
+            {currentView === 'RevisionTecnica' && hasAccess('RevisionTecnica') && (
+              <div style={{ animation: 'fadeIn 0.3s ease' }}>
+                {dbError && (
+                  <div className="alert-banner error" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span className="alert-icon">⚠️</span>
+                      <span className="alert-desc" style={{ color: 'var(--text-color)', fontWeight: '500' }}>{dbError}</span>
+                    </div>
+                    <button 
+                      onClick={() => setDbError(null)} 
+                      style={{ background: 'none', border: 'none', color: 'var(--text-color)', cursor: 'pointer', fontSize: '18px', fontWeight: 'bold' }}
+                      title="Cerrar"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+                {/* CABECERA DE LA VISTA */}
+                <div className="view-header print-avoid">
+                  <div>
+                    <h2>Gestión de Vehículos y Revisión Técnica</h2>
+                    <p>Controles de vencimientos de RT, Permiso de Circulación, kilometraje y Mina Subterránea Andina.</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button className="btn-secondary" onClick={() => setViewType(viewType === 'cards' ? 'grid' : 'cards')}>
+                      {viewType === 'cards' ? '📋 Vista Tabla' : '🎴 Vista Tarjetas'}
+                    </button>
+                    {currentUser?.perfil !== 'Operador' && (
+                      <>
+                        <button className="btn-secondary" onClick={() => setShowMantenedoresModal(true)}>
+                          ⚙️ Mantenedores
+                        </button>
+                        <button className="btn-primary" onClick={openCreateVehiculoModal}>
+                          ➕ Registrar Vehículo/Equipo
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* FILTROS DE BÚSQUEDA Y SELECCIÓN */}
+                <div className="filters-card print-avoid">
+                  <div className="filter-field">
+                    <label>Buscar Patente / Nombre</label>
+                    <input
+                      type="text"
+                      placeholder="Ej. PHYX-94 o PJHD-93..."
+                      value={filterVehiculoSearch}
+                      onChange={(e) => setFilterVehiculoSearch(e.target.value)}
+                    />
+                  </div>
+                  <div className="filter-field">
+                    <label>Estado Alerta</label>
+                    <select value={filterVehiculoEstado} onChange={(e) => setFilterVehiculoEstado(e.target.value)}>
+                      <option value="ALL">Todos los Estados</option>
+                      <option value="vigente">Vigente (OK)</option>
+                      <option value="cordinar envió">Coordinar Envió</option>
+                      <option value="vencido">Vencido</option>
+                    </select>
+                  </div>
+                  <div className="filter-field">
+                    <label>Faena</label>
+                    <select value={filterVehiculoFaena} onChange={(e) => setFilterVehiculoFaena(e.target.value)}>
+                      <option value="ALL">Todas las Faenas</option>
+                      {mantenedores.filter(m => m.categoria === 'faena').map(m => (
+                        <option key={m.id} value={m.valor}>{m.valor}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="filter-field">
+                    <label>Contratista</label>
+                    <select value={filterVehiculoContratista} onChange={(e) => setFilterVehiculoContratista(e.target.value)}>
+                      <option value="ALL">Todos los Contratistas</option>
+                      {mantenedores.filter(m => m.categoria === 'contratista').map(m => (
+                        <option key={m.id} value={m.valor}>{m.valor}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* PESTAÑAS DE FILTRADO POR TIPO */}
+                <div className="veh-type-tabs print-avoid">
+                  <button className={`veh-type-tab-btn ${selectedTipoTab === 'camion' ? 'active' : ''}`} onClick={() => { setSelectedTipoTab('camion'); setSelectedVehiculo(null); }}>
+                    🚚 Camiones ({vehiculos.filter(v => v.tipo === 'camion').length})
+                  </button>
+                  <button className={`veh-type-tab-btn ${selectedTipoTab === 'camioneta' ? 'active' : ''}`} onClick={() => { setSelectedTipoTab('camioneta'); setSelectedVehiculo(null); }}>
+                    🛻 Camionetas ({vehiculos.filter(v => v.tipo === 'camioneta').length})
+                  </button>
+                  <button className={`veh-type-tab-btn ${selectedTipoTab === 'equipo' ? 'active' : ''}`} onClick={() => { setSelectedTipoTab('equipo'); setSelectedVehiculo(null); }}>
+                    🏗️ Equipos Certificados ({vehiculos.filter(v => v.tipo === 'equipo').length})
+                  </button>
+                </div>
+
+                {/* LOGICA DE LISTADO CON FILTROS REACTIVOS */}
+                {(() => {
+                  const filtered = vehiculos.filter(v => {
+                    if (v.tipo !== selectedTipoTab) return false;
+                    
+                    const query = filterVehiculoSearch.toLowerCase();
+                    const matchesSearch = v.patente.toLowerCase().includes(query);
+                    const matchesFaena = filterVehiculoFaena === 'ALL' || v.faena === filterVehiculoFaena;
+                    const matchesContr = filterVehiculoContratista === 'ALL' || v.contratista === filterVehiculoContratista;
+                    
+                    let matchesEstado = true;
+                    if (filterVehiculoEstado !== 'ALL') {
+                      if (v.tipo === 'equipo') {
+                        matchesEstado = v.estadoRT === filterVehiculoEstado; // En equipo mapea RT como Certificado
+                      } else {
+                        matchesEstado = v.estadoRT === filterVehiculoEstado || v.estadoMina === filterVehiculoEstado;
+                      }
+                    }
+                    
+                    return matchesSearch && matchesFaena && matchesContr && matchesEstado;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="form-card text-center" style={{ padding: '40px', color: 'var(--text-secondary)' }}>
+                        No se encontraron registros de {selectedTipoTab === 'camion' ? 'camiones' : selectedTipoTab === 'camioneta' ? 'camionetas' : 'equipos'} con los criterios de búsqueda establecidos.
+                      </div>
+                    );
+                  }
+
+                  if (viewType === 'cards') {
+                    return (
+                      <div className="vehicle-cards-grid">
+                        {filtered.map(v => {
+                          return (
+                            <div key={v.id} className="vehicle-card" onClick={() => { setSelectedVehiculo(v); fetchKilometrajes(v.id); }}>
+                              <div className="vehicle-card-img-wrap">
+                                <img src={v.fotoUrl || ''} alt={v.patente} className="vehicle-card-img" />
+                                <span className="vehicle-card-badge">{v.tipo}</span>
+                              </div>
+                              <div className="vehicle-card-body">
+                                <h3 className="vehicle-card-title">{v.patente}</h3>
+                                <div className="vehicle-card-meta">
+                                  <span>🏢 <strong>Faena:</strong> {v.faena}</span>
+                                  <span>🛡️ <strong>Contratista:</strong> {v.contratista}</span>
+                                </div>
+                                <div className="vehicle-status-pills">
+                                  {v.tipo !== 'equipo' ? (
+                                    <>
+                                      <div className={`status-pill ${v.estadoRT === 'vigente' ? 'vigente' : v.estadoRT === 'cordinar envió' ? 'cordinar' : 'vencido'}`}>
+                                        <span>RT ({v.fechaVencimientoRT || 'Sin fecha'})</span>
+                                        <span>{v.estadoRT === 'vigente' ? '🟢 Vigente' : v.estadoRT === 'cordinar envió' ? `⚠️ Coordinar (${v.diasParaRT}d)` : '🔴 Vencido'}</span>
+                                      </div>
+                                      <div className={`status-pill ${v.estadoMina === 'vigente' ? 'vigente' : v.estadoMina === 'cordinar envió' ? 'cordinar' : 'vencido'}`}>
+                                        <span>Mina Andina</span>
+                                        <span>{v.estadoMina === 'vigente' ? '🟢 Vigente' : v.estadoMina === 'cordinar envió' ? `⚠️ Control (${v.diasParaMinaControl}d)` : '🔴 Vencido'}</span>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div className={`status-pill ${v.estadoRT === 'vigente' ? 'vigente' : v.estadoRT === 'cordinar envió' ? 'cordinar' : 'vencido'}`}>
+                                      <span>Certificado ({v.fechaVencimientoCertificado || 'Sin fecha'})</span>
+                                      <span>{v.estadoRT === 'vigente' ? '🟢 Vigente' : v.estadoRT === 'cordinar envió' ? `⚠️ Vence (${v.diasParaCertificado}d)` : '🔴 Vencido'}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div className="table-wrapper">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Foto</th>
+                              <th>{selectedTipoTab === 'equipo' ? 'Nombre Equipo' : 'Patente'}</th>
+                              <th>Faena</th>
+                              <th>Contratista</th>
+                              {selectedTipoTab === 'equipo' ? (
+                                <>
+                                  <th>N° Certificado</th>
+                                  <th>Fecha Emisión</th>
+                                  <th>Vencimiento</th>
+                                  <th>Días por Vencer</th>
+                                </>
+                              ) : (
+                                <>
+                                  <th>Fecha RT</th>
+                                  <th>Días RT</th>
+                                  <th>Permiso Circulación</th>
+                                  <th>Mina Control</th>
+                                  <th>Días Mina</th>
+                                </>
+                              )}
+                              <th>Estado General</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filtered.map(v => {
+                              return (
+                                <tr key={v.id} onClick={() => { setSelectedVehiculo(v); fetchKilometrajes(v.id); }} style={{ cursor: 'pointer' }}>
+                                  <td>
+                                    <img src={v.fotoUrl || ''} alt={v.patente} style={{ width: '40px', height: '30px', objectFit: 'cover', borderRadius: '4px' }} />
+                                  </td>
+                                  <td className="font-mono font-bold">{v.patente}</td>
+                                  <td>{v.faena}</td>
+                                  <td>{v.contratista}</td>
+                                  {v.tipo === 'equipo' ? (
+                                    <>
+                                      <td className="font-semibold">{v.numCertificado || 'N/A'}</td>
+                                      <td>{v.fechaEmisionCertificado || 'N/A'}</td>
+                                      <td>{v.fechaVencimientoCertificado || 'N/A'}</td>
+                                      <td className="font-bold">{v.diasParaCertificado !== null ? `${v.diasParaCertificado} días` : 'N/A'}</td>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <td>{v.fechaVencimientoRT || 'N/A'}</td>
+                                      <td className="font-semibold">{v.diasParaRT !== null ? `${v.diasParaRT} d` : 'N/A'}</td>
+                                      <td>{v.fechaVencimientoPermisoCirc || 'N/A'}</td>
+                                      <td>{v.minaFechaVencimiento || 'N/A'}</td>
+                                      <td className="font-semibold">{v.diasParaMinaControl !== null ? `${v.diasParaMinaControl} d` : 'N/A'}</td>
+                                    </>
+                                  )}
+                                  <td>
+                                    <span className={`table-badge ${v.estadoRT === 'vigente' ? 'approved' : v.estadoRT === 'cordinar envió' ? 'rate' : 'rejected'}`}>
+                                      {v.tipo === 'equipo' ? `Certificado ${v.estadoRT}` : `RT ${v.estadoRT}`}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  }
+                })()}
+
+                {/* DETALLE LATERAL (DRAWER DETALLADO CON FOTO, ALERTAS Y CALENDARIO) */}
+                {selectedVehiculo && (
+                  <div className="drawer-overlay" onClick={() => setSelectedVehiculo(null)}>
+                    <div className="drawer-container" onClick={(e) => e.stopPropagation()}>
+                      <div className="drawer-header">
+                        <h3>Ficha Técnica: {selectedVehiculo.patente}</h3>
+                        <button className="action-icon-btn" onClick={() => setSelectedVehiculo(null)} style={{ fontSize: '24px' }}>×</button>
+                      </div>
+                      <div className="drawer-body">
+                        {/* COLUMNA 1: INFO Y FOTO */}
+                        <div className="detail-info-block">
+                          <img
+                            src={selectedVehiculo.fotoUrl || ''}
+                            alt={selectedVehiculo.patente}
+                            style={{ width: '100%', height: '200px', objectFit: 'cover', borderRadius: '12px', border: '1px solid var(--card-border)', boxShadow: 'var(--shadow-sm)' }}
+                          />
+                          <div className="detail-info-grid">
+                            <div className="detail-info-row">
+                              <span className="detail-info-label">Tipo Registro</span>
+                              <span className="detail-info-val" style={{ textTransform: 'uppercase' }}>{selectedVehiculo.tipo}</span>
+                            </div>
+                            <div className="detail-info-row">
+                              <span className="detail-info-label">Faena Operación</span>
+                              <span className="detail-info-val">{selectedVehiculo.faena}</span>
+                            </div>
+                            <div className="detail-info-row">
+                              <span className="detail-info-label">Contratista Cargo</span>
+                              <span className="detail-info-val">{selectedVehiculo.contratista}</span>
+                            </div>
+
+                            {selectedVehiculo.tipo === 'equipo' ? (
+                              <>
+                                <div className="detail-info-row">
+                                  <span className="detail-info-label">N° Certificado</span>
+                                  <span className="detail-info-val">{selectedVehiculo.numCertificado || 'No registrado'}</span>
+                                </div>
+                                <div className="detail-info-row">
+                                  <span className="detail-info-label">Fecha Emisión</span>
+                                  <span className="detail-info-val">{selectedVehiculo.fechaEmisionCertificado || 'No registrado'}</span>
+                                </div>
+                                <div className="detail-info-row">
+                                  <span className="detail-info-label">Vencimiento Certificado</span>
+                                  <span className="detail-info-val">{selectedVehiculo.fechaVencimientoCertificado || 'No registrado'}</span>
+                                </div>
+                                <div className="detail-info-row" style={{ background: selectedVehiculo.estadoRT === 'vencido' ? 'var(--error-bg)' : selectedVehiculo.estadoRT === 'cordinar envió' ? 'var(--warning-bg)' : 'var(--success-bg)' }}>
+                                  <span className="detail-info-label">Días por vencer</span>
+                                  <span className="detail-info-val" style={{ color: selectedVehiculo.estadoRT === 'vencido' ? 'var(--error-red)' : selectedVehiculo.estadoRT === 'cordinar envió' ? 'var(--warning-amber)' : 'var(--success-green)' }}>
+                                    {selectedVehiculo.diasParaCertificado !== null ? `${selectedVehiculo.diasParaCertificado} días` : 'N/A'}
+                                  </span>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="detail-info-row">
+                                  <span className="detail-info-label">Vencimiento RT</span>
+                                  <span className="detail-info-val">{selectedVehiculo.fechaVencimientoRT || 'No registrado'}</span>
+                                </div>
+                                <div className="detail-info-row" style={{ background: selectedVehiculo.estadoRT === 'vencido' ? 'var(--error-bg)' : selectedVehiculo.estadoRT === 'cordinar envió' ? 'var(--warning-bg)' : 'var(--success-bg)' }}>
+                                  <span className="detail-info-label">Días para RT</span>
+                                  <span className="detail-info-val" style={{ color: selectedVehiculo.estadoRT === 'vencido' ? 'var(--error-red)' : selectedVehiculo.estadoRT === 'cordinar envió' ? 'var(--warning-amber)' : 'var(--success-green)' }}>
+                                    {selectedVehiculo.diasParaRT !== null ? `${selectedVehiculo.diasParaRT} días (${selectedVehiculo.estadoRT})` : 'N/A'}
+                                  </span>
+                                </div>
+                                <div className="detail-info-row">
+                                  <span className="detail-info-label">Permiso Circulación Venc.</span>
+                                  <span className="detail-info-val">{selectedVehiculo.fechaVencimientoPermisoCirc || 'No registrado'}</span>
+                                </div>
+                                <div className="detail-info-row">
+                                  <span className="detail-info-label">Días Permiso Circ.</span>
+                                  <span className="detail-info-val font-bold">
+                                    {selectedVehiculo.diasParaPermisoCirc !== null ? `${selectedVehiculo.diasParaPermisoCirc} días` : 'N/A'}
+                                  </span>
+                                </div>
+                                <div className="detail-info-row">
+                                  <span className="detail-info-label">Mina Control Ingreso</span>
+                                  <span className="detail-info-val">{selectedVehiculo.minaFechaControl || 'No registrado'}</span>
+                                </div>
+                                <div className="detail-info-row">
+                                  <span className="detail-info-label">Mina Vencimiento Ingreso</span>
+                                  <span className="detail-info-val">{selectedVehiculo.minaFechaVencimiento || 'No registrado'}</span>
+                                </div>
+                                <div className="detail-info-row" style={{ background: selectedVehiculo.estadoMina === 'vencido' ? 'var(--error-bg)' : selectedVehiculo.estadoMina === 'cordinar envió' ? 'var(--warning-bg)' : 'var(--success-bg)' }}>
+                                  <span className="detail-info-label">Días Control Mina</span>
+                                  <span className="detail-info-val" style={{ color: selectedVehiculo.estadoMina === 'vencido' ? 'var(--error-red)' : selectedVehiculo.estadoMina === 'cordinar envió' ? 'var(--warning-amber)' : 'var(--success-green)' }}>
+                                    {selectedVehiculo.diasParaMinaControl !== null ? `${selectedVehiculo.diasParaMinaControl} días (${selectedVehiculo.estadoMina})` : 'N/A'}
+                                  </span>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* COLUMNA 2: CALENDARIO DE KILOMETRAJE */}
+                        <div>
+                          <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: '800', color: 'var(--primary-color)' }}>
+                            📅 Registro de Kilometraje Diario
+                          </h4>
+                          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '15px' }}>
+                            Haga clic en cualquier día del calendario para ingresar el kilometraje recorrido por esta unidad.
+                          </p>
+
+                          {/* COMPONENTE WIDGET CALENDARIO */}
+                          {(() => {
+                            const { days, year, month } = getCalendarDays();
+                            const monthNames = [
+                              'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                              'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+                            ];
+
+                            return (
+                              <div className="calendar-widget">
+                                <div className="calendar-header">
+                                  <h4>{monthNames[month]} {year}</h4>
+                                  <div style={{ display: 'flex', gap: '5px' }}>
+                                    <button className="calendar-nav-btn" onClick={() => setMileageMonthOffset(mileageMonthOffset - 1)}>◀</button>
+                                    <button className="calendar-nav-btn" onClick={() => setMileageMonthOffset(0)}>Hoy</button>
+                                    <button className="calendar-nav-btn" onClick={() => setMileageMonthOffset(mileageMonthOffset + 1)}>▶</button>
+                                  </div>
+                                </div>
+                                <div className="calendar-grid">
+                                  {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d, i) => (
+                                    <div key={i} className="calendar-weekday">{d}</div>
+                                  ))}
+                                  {days.map((day, i) => {
+                                    const logged = kilometrajesList.find(k => k.fecha === day.dateStr);
+                                    return (
+                                      <div
+                                        key={i}
+                                        className={`calendar-day ${day.isCurrentMonth ? '' : 'other-month'} ${logged ? 'has-value' : ''}`}
+                                        onClick={() => {
+                                          if (!day.isCurrentMonth) return;
+                                          setCurrentKilometrajeDate(day.dateStr);
+                                          setCurrentKilometrajeVal(logged ? logged.kilometraje : 0);
+                                          setShowKilometrajeInputModal(true);
+                                        }}
+                                      >
+                                        <span className="calendar-day-num">{day.dayNum}</span>
+                                        {logged && (
+                                          <span className="calendar-day-value" title={`${logged.kilometraje} km`}>
+                                            {logged.kilometraje}k
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                      <div className="drawer-footer">
+                        {currentUser?.perfil !== 'Operador' && (
+                          <>
+                            <button className="btn-secondary" style={{ color: 'var(--error-red)', borderColor: 'rgba(239, 68, 68, 0.3)' }} onClick={() => handleDeleteVehiculo(selectedVehiculo.id)}>
+                              🗑️ Eliminar Registro
+                            </button>
+                            <button className="btn-secondary" onClick={() => openEditVehiculoModal(selectedVehiculo)}>
+                              ✏️ Editar Datos
+                            </button>
+                          </>
+                        )}
+                        <button className="btn-primary" onClick={() => setSelectedVehiculo(null)}>
+                          Listo
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* MODAL: REGISTRAR / EDITAR VEHICULO */}
+                {showVehiculoModal && (
+                  <div className="modal-overlay" style={{ padding: '40px 20px' }}>
+                    <div className="modal-container medium" style={{ animation: 'fadeIn 0.3s ease' }}>
+                      <div className="modal-header">
+                        <h3>{editModeVehiculo ? 'Editar Vehículo / Equipo' : 'Registrar Nuevo Vehículo / Equipo'}</h3>
+                        <button className="action-icon-btn" onClick={() => setShowVehiculoModal(false)} style={{ fontSize: '24px' }}>×</button>
+                      </div>
+                      <form onSubmit={handleSaveVehiculo}>
+                        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                          <div className="form-field">
+                            <label>Tipo de Registro <span className="required-star">*</span></label>
+                            <select value={formVehTipo} onChange={(e) => setFormVehTipo(e.target.value)} required>
+                              <option value="camion">🚚 Camión</option>
+                              <option value="camioneta">🛻 Camioneta</option>
+                              <option value="equipo">🏗️ Equipo Certificado</option>
+                            </select>
+                          </div>
+                          
+                          <div className="form-field">
+                            <label>{formVehTipo === 'equipo' ? 'Identificador Equipo' : 'Patente Vehículo'} <span className="required-star">*</span></label>
+                            <input
+                              type="text"
+                              placeholder={formVehTipo === 'equipo' ? 'Ej. Bulldozer Komatsu' : 'Ej. PHYX-94'}
+                              value={formVehPatente}
+                              onChange={(e) => setFormVehPatente(e.target.value)}
+                              required
+                              style={{ textTransform: 'uppercase' }}
+                            />
+                          </div>
+
+                          <div className="form-grid-2">
+                            <div className="form-field">
+                              <label>Faena <span className="required-star">*</span></label>
+                              <select value={formVehFaena} onChange={(e) => setFormVehFaena(e.target.value)} required>
+                                {mantenedores.filter(m => m.categoria === 'faena').map(m => (
+                                  <option key={m.id} value={m.valor}>{m.valor}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="form-field">
+                              <label>Contratista <span className="required-star">*</span></label>
+                              <select value={formVehContratista} onChange={(e) => setFormVehContratista(e.target.value)} required>
+                                {mantenedores.filter(m => m.categoria === 'contratista').map(m => (
+                                  <option key={m.id} value={m.valor}>{m.valor}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="form-field">
+                            <label>URL Foto Vehículo (Opcional)</label>
+                            <input
+                              type="text"
+                              placeholder="https://..."
+                              value={formVehFotoUrl}
+                              onChange={(e) => setFormVehFotoUrl(e.target.value)}
+                            />
+                          </div>
+
+                          {/* CAMPOS DEPENDIENTES DE TIPO */}
+                          {formVehTipo === 'equipo' ? (
+                            <>
+                              <div className="form-field">
+                                <label>Número Certificación <span className="required-star">*</span></label>
+                                <input type="text" placeholder="Ej. 740013" value={formVehNumCertificado} onChange={(e) => setFormVehNumCertificado(e.target.value)} required />
+                              </div>
+                              <div className="form-grid-2">
+                                <div className="form-field">
+                                  <label>Fecha Emisión <span className="required-star">*</span></label>
+                                  <input type="date" value={formVehFechaEmisionCert} onChange={(e) => setFormVehFechaEmisionCert(e.target.value)} required />
+                                </div>
+                                <div className="form-field">
+                                  <label>Vencimiento Certificación <span className="required-star">*</span></label>
+                                  <input type="date" value={formVehFechaVencimientoCert} onChange={(e) => setFormVehFechaVencimientoCert(e.target.value)} required />
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="form-grid-2">
+                                <div className="form-field">
+                                  <label>Última RT</label>
+                                  <input type="date" value={formVehFechaRT} onChange={(e) => setFormVehFechaRT(e.target.value)} />
+                                </div>
+                                <div className="form-field">
+                                  <label>Vencimiento RT <span className="required-star">*</span></label>
+                                  <input type="date" value={formVehFechaVencimientoRT} onChange={(e) => setFormVehFechaVencimientoRT(e.target.value)} required />
+                                </div>
+                              </div>
+                              <div className="form-field">
+                                <label>Vencimiento Permiso Circulación <span className="required-star">*</span></label>
+                                <input type="date" value={formVehFechaVencimientoPermisoCirc} onChange={(e) => setFormVehFechaVencimientoPermisoCirc(e.target.value)} required />
+                              </div>
+                              
+                              <div className="form-grid-2" style={{ border: '1.5px solid rgba(59, 130, 246, 0.2)', padding: '12px', borderRadius: '8px', background: 'rgba(59, 130, 246, 0.02)' }}>
+                                <div className="form-field col-span-2" style={{ marginBottom: '8px' }}>
+                                  <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--primary-color)', textTransform: 'uppercase' }}>
+                                    🚇 Permiso Ingreso Mina Subterránea Andina
+                                  </span>
+                                </div>
+                                <div className="form-field">
+                                  <label>Fecha Control</label>
+                                  <input type="date" value={formVehMinaFechaControl} onChange={(e) => setFormVehMinaFechaControl(e.target.value)} />
+                                </div>
+                                <div className="form-field">
+                                  <label>Fecha Vencimiento Control</label>
+                                  <input type="date" value={formVehMinaFechaVencimiento} onChange={(e) => setFormVehMinaFechaVencimiento(e.target.value)} />
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        <div className="modal-footer">
+                          <button type="button" className="btn-secondary" onClick={() => setShowVehiculoModal(false)}>Cancelar</button>
+                          <button type="submit" className="btn-primary">Guardar Registro</button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
+                {/* MODAL: INPUT DIARIO DE KILOMETRAJE */}
+                {showKilometrajeInputModal && (
+                  <div className="modal-overlay" style={{ zIndex: 110, padding: '40px 20px' }}>
+                    <div className="modal-container small" style={{ animation: 'fadeIn 0.2s ease' }}>
+                      <div className="modal-header">
+                        <h3>Registrar Kilometraje</h3>
+                        <button className="action-icon-btn" onClick={() => setShowKilometrajeInputModal(false)}>×</button>
+                      </div>
+                      <form onSubmit={handleSaveKilometraje}>
+                        <div className="modal-body">
+                          <div className="form-field" style={{ marginBottom: '15px' }}>
+                            <label>Fecha Seleccionada</label>
+                            <input type="text" value={currentKilometrajeDate} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} />
+                          </div>
+                          <div className="form-field">
+                            <label>Kilometraje Recorrido (KM acumulado) <span className="required-star">*</span></label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="Ej. 120500"
+                              value={currentKilometrajeVal}
+                              onChange={(e) => setCurrentKilometrajeVal(Number(e.target.value))}
+                              required
+                            />
+                          </div>
+                        </div>
+                        <div className="modal-footer">
+                          <button type="button" className="btn-secondary" onClick={() => setShowKilometrajeInputModal(false)}>Cancelar</button>
+                          <button type="submit" className="btn-primary">Guardar KM</button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
+                {/* MODAL: GESTIÓN DE MANTENEDORES (CRUD MANTENEDORES) */}
+                {showMantenedoresModal && (
+                  <div className="modal-overlay" style={{ padding: '40px 20px' }}>
+                    <div className="modal-container medium" style={{ animation: 'fadeIn 0.3s ease' }}>
+                      <div className="modal-header">
+                        <h3>Mantenedor de Categorías Auxiliares</h3>
+                        <button className="action-icon-btn" onClick={() => setShowMantenedoresModal(false)} style={{ fontSize: '24px' }}>×</button>
+                      </div>
+                      <div className="modal-body" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px' }}>
+                        {/* LISTA Y CREACIÓN */}
+                        <div>
+                          <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: '800' }}>Registrar Nuevo Valor</h4>
+                          <form onSubmit={handleSaveMantenedor}>
+                            <div className="form-field" style={{ marginBottom: '12px' }}>
+                              <label>Categoría</label>
+                              <select value={formMantCategoria} onChange={(e) => setFormMantCategoria(e.target.value)} required>
+                                <option value="faena">Faena de Operación</option>
+                                <option value="contratista">Contratista</option>
+                              </select>
+                            </div>
+                            <div className="form-field" style={{ marginBottom: '15px' }}>
+                              <label>Nombre / Valor <span className="required-star">*</span></label>
+                              <input
+                                type="text"
+                                placeholder="Ej. Codelco Ventanas"
+                                value={formMantValor}
+                                onChange={(e) => setFormMantValor(e.target.value)}
+                                required
+                              />
+                            </div>
+                            <button type="submit" className="btn-primary" style={{ width: '100%' }}>Agregar Valor</button>
+                          </form>
+                        </div>
+                        
+                        {/* VISTA DE VALORES ACTUALES */}
+                        <div style={{ borderLeft: '1px solid var(--card-border)', paddingLeft: '20px' }}>
+                          <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: '800' }}>Valores Existentes</h4>
+                          <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {['faena', 'contratista'].map(cat => {
+                              const filtered = mantenedores.filter(m => m.categoria === cat);
+                              return (
+                                <div key={cat} style={{ marginBottom: '10px' }}>
+                                  <span style={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                                    {cat === 'faena' ? 'Faenas' : 'Contratistas'} ({filtered.length})
+                                  </span>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+                                    {filtered.map(m => (
+                                      <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', background: '#f8fafc', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}>
+                                        <span>{m.valor}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteMantenedor(m.id)}
+                                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--error-red)', fontWeight: 'bold' }}
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="modal-footer">
+                        <button className="btn-primary" onClick={() => setShowMantenedoresModal(false)}>Cerrar</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
               </div>
             )}
 
@@ -3007,6 +4168,7 @@ export default function App() {
                             <th style={{ textAlign: 'center' }}>📊 Panel de Control</th>
                             <th style={{ textAlign: 'center' }}>📝 Nuevo Formulario ART</th>
                             <th style={{ textAlign: 'center' }}>🗂️ Historial completo</th>
+                            <th style={{ textAlign: 'center' }}>🚚 Revisión Técnica</th>
                             <th style={{ textAlign: 'center' }}>👥 Administración (Usuarios)</th>
                             <th style={{ textAlign: 'center' }}>🛡️ Permisos (Perfiles)</th>
                           </tr>
@@ -3040,6 +4202,16 @@ export default function App() {
                                     type="checkbox"
                                     checked={p.screens.Historial}
                                     onChange={() => handlePermissionToggle(p.rol, 'Historial')}
+                                    disabled={p.rol === 'Operador'}
+                                  />
+                                </label>
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <label className="checkbox-label">
+                                  <input
+                                    type="checkbox"
+                                    checked={p.screens.RevisionTecnica}
+                                    onChange={() => handlePermissionToggle(p.rol, 'RevisionTecnica')}
                                     disabled={p.rol === 'Operador'}
                                   />
                                 </label>
