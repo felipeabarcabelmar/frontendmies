@@ -261,6 +261,20 @@ body {
   margin: 0;
 }
 
+.sidebar-section-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  padding: 16px 24px 6px 24px;
+  opacity: 0.85;
+}
+
+.sidebar.collapsed .sidebar-section-header {
+  padding: 0;
+}
+
 .menu-item {
   display: flex;
   align-items: center;
@@ -310,6 +324,39 @@ body {
 .sidebar-footer {
   padding: 20px;
   border-top: 1px solid var(--card-border);
+}
+
+.install-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px;
+  background: linear-gradient(135deg, var(--primary-color, #1e3a8a), #2563eb);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.15);
+}
+
+.install-btn:hover {
+  background: linear-gradient(135deg, #1d4ed8, #1e40af);
+  box-shadow: 0 6px 15px rgba(29, 78, 216, 0.3);
+  transform: translateY(-1px);
+}
+
+.install-btn:active {
+  transform: translateY(1px);
+}
+
+.install-text {
+  transition: opacity 0.2s ease;
 }
 
 .logout-btn {
@@ -1881,4 +1928,121 @@ select {
   background-color: var(--card-bg);
   color: var(--secondary-color);
   box-shadow: var(--shadow-sm);
+}
+
+/* --- COLLAPSIBLE SIDEBAR RULES --- */
+.sidebar-collapse-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: background-color 0.2s;
+  margin-left: auto;
+}
+.sidebar-collapse-btn:hover {
+  background-color: rgba(100, 116, 139, 0.1);
+  color: var(--text-primary);
+}
+
+.sidebar.collapsed {
+  width: 78px;
+}
+.sidebar.collapsed .sidebar-header {
+  padding: 24px 10px;
+  justify-content: center;
+}
+.sidebar.collapsed .sidebar-logo-text,
+.sidebar.collapsed .profile-banner,
+.sidebar.collapsed .profile-name,
+.sidebar.collapsed .profile-title,
+.sidebar.collapsed .menu-item-text,
+.sidebar.collapsed .logout-text {
+  display: none !important;
+}
+.sidebar.collapsed .sidebar-profile-card {
+  padding: 15px 0;
+}
+.sidebar.collapsed .profile-avatar-wrap {
+  margin-top: 0;
+}
+.sidebar.collapsed .sidebar-avatar {
+  width: 44px;
+  height: 44px;
+  border-width: 2px;
+}
+.sidebar.collapsed .menu-item {
+  padding: 12px 0;
+  justify-content: center;
+  border-left-width: 0;
+}
+.sidebar.collapsed .menu-item.active {
+  border-left-width: 0;
+  background-color: rgba(10, 102, 194, 0.08);
+}
+.sidebar.collapsed .menu-item-icon {
+  margin-right: 0;
+  font-size: 22px;
+}
+.sidebar.collapsed .logout-btn {
+  padding: 10px 0;
+  justify-content: center;
+}
+.sidebar.collapsed .logout-btn .menu-item-icon {
+  margin-right: 0;
+}
+
+.sidebar.collapsed .install-btn {
+  padding: 10px 0;
+  justify-content: center;
+}
+.sidebar.collapsed .install-btn .menu-item-icon {
+  margin-right: 0;
+}
+.sidebar.collapsed .install-text {
+  display: none;
+}
+
+/* Checklist View Styles */
+.checklist-split-view {
+  display: grid;
+  grid-template-columns: 1fr 2.5fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 992px) {
+  .checklist-split-view {
+    grid-template-columns: 1fr;
+  }
+}
+
+.trucks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 550px;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
+.truck-item {
+  padding: 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.truck-item:hover {
+  background-color: rgba(10, 102, 194, 0.02);
+  border-color: var(--primary-color);
 }

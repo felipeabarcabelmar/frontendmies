@@ -67,6 +67,7 @@ interface IntegranteEquipo {
 interface FilaRiesgo {
   numero: string;
   cumple: boolean;
+  noAplica?: boolean;
 }
 
 interface RiesgoCriticoEspecifico {
@@ -79,6 +80,7 @@ interface FormularioART {
   id: string;
   codigoSeguimiento: string;
   estado: 'APPROVED_WORK_AUTHORIZED' | 'REJECTED_BY_CRITICAL_CONTROL';
+  estadoFinalizacion?: string;
   createdAt: string;
   updatedAt: string;
   paso1Planificacion: Paso1Planificacion;
@@ -104,6 +106,9 @@ interface User {
   email: string;
   perfil: 'Administrador' | 'Supervisor' | 'Operador';
   foto: string;
+  vehiculosAsociados?: string[];
+  password?: string;
+  screens?: { [key in keyof ProfilePermissions['screens']]?: boolean };
 }
 
 interface ProfilePermissions {
@@ -115,6 +120,9 @@ interface ProfilePermissions {
     Usuarios: boolean;
     Perfiles: boolean;
     RevisionTecnica: boolean;
+    ArtPorFinalizar: boolean;
+    Mantenedores: boolean;
+    Checklist: boolean;
   };
 }
 
@@ -256,6 +264,382 @@ function SignaturePad({ value, onChange, placeholder = "Firme aquí con su dedo 
   );
 }
 
+const CHECKLIST_ITEMS = {
+  generalidades: [
+    { n: 1, label: "Bocina", rc: false },
+    { n: 2, label: "Alarma retroceso (RC)", rc: true },
+    { n: 3, label: "Estado de Frenos (RC)", rc: true },
+    { n: 4, label: "Calefacción", rc: false },
+    { n: 5, label: "Corta corriente", rc: false },
+    { n: 6, label: "Radio Comunicación (RC)", rc: true },
+    { n: 7, label: "Espejo lateral", rc: false },
+    { n: 8, label: "Escala acceso estanque", rc: false },
+    { n: 9, label: "Estado de Neumáticos", rc: false },
+    { n: 10, label: "Limpieza exterior", rc: false },
+    { n: 11, label: "Estado Estanque (RC)", rc: true },
+    { n: 12, label: "Sistema de venteo", rc: false },
+    { n: 13, label: "Válvula interlock", rc: false },
+    { n: 14, label: "Acumulador de aire (RC)", rc: true },
+    { n: 15, label: "Logo autorizado", rc: false },
+    { n: 16, label: "Luces altas", rc: false },
+    { n: 17, label: "Luces bajas (RC)", rc: true },
+    { n: 18, label: "Luces de emergencia", rc: false },
+    { n: 19, label: "Luces de viraje", rc: false },
+    { n: 20, label: "Luces de freno", rc: false },
+    { n: 21, label: "Luz interior cabina", rc: false },
+    { n: 22, label: "Marcador del tablero y combustible", rc: false },
+    { n: 23, label: "Nivel de agua limpiaparabrisas", rc: false },
+    { n: 24, label: "Estado parachoques", rc: false },
+    { n: 25, label: "Aseo interior cabina", rc: false },
+    { n: 26, label: "Tacógrafo", rc: false },
+    { n: 27, label: "Pisaderas", rc: false },
+    { n: 28, label: "Limpia parabrisas", rc: false },
+    { n: 29, label: "Cinturón de seguridad", rc: false },
+    { n: 30, label: "Cable a tierra", rc: false },
+    { n: 31, label: "Trabatuercas (RC)", rc: true },
+    { n: 32, label: "Neblineros", rc: false },
+    { n: 33, label: "Bombas de suministro (pernos, filtraciones)", rc: false },
+    { n: 34, label: "Tubo de escape (cinta antiflama)", rc: false }
+  ],
+  sistemaAutomatizacion: [
+    { n: 35, label: "Nozzle Reader pistola (NR)", rc: false },
+    { n: 36, label: "Tag de ventas", rc: false },
+    { n: 37, label: "Anillo", rc: false },
+    { n: 38, label: "Nano Pass Estanque Servicio", rc: false },
+    { n: 39, label: "Nano Pass Conector API", rc: false }
+  ],
+  aspectosMecanicos: [
+    { n: 40, label: "Estado de mangueras", rc: false },
+    { n: 41, label: "Filtraciones de válvulas", rc: false },
+    { n: 42, label: "Nivel de aceite de motor (RC)", rc: true },
+    { n: 43, label: "Nivel de agua", rc: false },
+    { n: 44, label: "Nivel de líquido de frenos", rc: false },
+    { n: 45, label: "Tensión de correas ventilador", rc: false }
+  ],
+  equipamiento: [
+    { n: 46, label: "Baliza", rc: false },
+    { n: 47, label: "Botiquín", rc: false },
+    { n: 48, label: "Cadenas y Tensores", rc: false },
+    { n: 49, label: "Tapa válvula descarga", rc: false },
+    { n: 50, label: "Seguro cajón meter (para fijar puertas abiertas)", rc: false },
+    { n: 51, label: "Tapas Pistolas de venta", rc: false },
+    { n: 52, label: "Codo de descarga", rc: false },
+    { n: 53, label: "Cuñas", rc: false },
+    { n: 54, label: "Tag consumo propio", rc: false },
+    { n: 55, label: "Foco faenero", rc: false },
+    { n: 56, label: "Manguera descarga", rc: false },
+    { n: 57, label: "Materiales absorbentes", rc: false },
+    { n: 58, label: "Pala", rc: false },
+    { n: 59, label: "Triángulos reflectantes", rc: false },
+    { n: 60, label: "Pértiga", rc: false },
+    { n: 61, label: "Conos", rc: false },
+    { n: 62, label: "Extintores (2)", rc: false }
+  ],
+  documentacionPersonal: [
+    { n: 63, label: "Psicotécnico riguroso", rc: false },
+    { n: 64, label: "Licencia Municipal", rc: false },
+    { n: 65, label: "Licencia Interna", rc: false },
+    { n: 66, label: "Credencial Interna", rc: false }
+  ],
+  camionTanque: [
+    { n: 67, label: "Procedimientos operativos", rc: false },
+    { n: 68, label: "Documentación camión vigente", rc: false },
+    { n: 69, label: "Manual de seguridad combustibles líquidos (MSCL)", rc: false },
+    { n: 70, label: "Hoja de seguridad del producto", rc: false }
+  ]
+};
+
+function MultiSelectProcedimientos({
+  selectedString,
+  onChange,
+  mantenedores
+}: {
+  selectedString: string;
+  onChange: (val: string) => void;
+  mantenedores: any[];
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Parse current selected list
+  const selectedList = selectedString ? selectedString.split(', ').map(s => s.trim()).filter(Boolean) : [];
+
+  // Deduplicate procedures from mantenedores
+  const procList = mantenedores
+    .filter(m => m.categoria === 'procedimiento')
+    .map(m => {
+      try {
+        return { id: m.id, ...JSON.parse(m.valor) };
+      } catch(e) {
+        return { id: m.id, nombre: m.valor, url: '' };
+      }
+    });
+
+  const uniqueProcs: any[] = [];
+  const seen = new Set();
+  for (const p of procList) {
+    if (p.nombre && !seen.has(p.nombre)) {
+      seen.add(p.nombre);
+      uniqueProcs.push(p);
+    }
+  }
+
+  const handleToggle = (nombre: string) => {
+    let newList;
+    if (selectedList.includes(nombre)) {
+      newList = selectedList.filter(s => s !== nombre);
+    } else {
+      newList = [...selectedList, nombre];
+    }
+    onChange(newList.join(', '));
+  };
+
+  return (
+    <div style={{ position: 'relative', width: '100%' }}>
+      {/* Dropdown Header Trigger */}
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          minHeight: '40px',
+          padding: '8px 12px',
+          fontSize: '13px',
+          border: '1px solid #cbd5e1',
+          borderRadius: '8px',
+          background: '#ffffff',
+          cursor: 'pointer',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '6px'
+        }}
+      >
+        {selectedList.length === 0 ? (
+          <span style={{ color: '#94a3b8' }}>-- Seleccionar uno o más procedimientos --</span>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+            {selectedList.map((nombre, i) => (
+              <span
+                key={i}
+                style={{
+                  background: 'var(--primary-color-light, #e0e7ff)',
+                  color: 'var(--primary-color, #1e3a8a)',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                {nombre}
+                <span
+                  style={{ cursor: 'pointer', fontWeight: 'bold' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggle(nombre);
+                  }}
+                >
+                  ×
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
+        <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#64748b' }}>
+          {isOpen ? 'expand_less' : 'expand_more'}
+        </span>
+      </div>
+
+      {/* Dropdown Options List */}
+      {isOpen && (
+        <>
+          <div
+            onClick={() => setIsOpen(false)}
+            style={{ position: 'fixed', inset: 0, zIndex: 999 }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              top: 'calc(100% + 4px)',
+              left: 0,
+              right: 0,
+              maxHeight: '220px',
+              overflowY: 'auto',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              background: '#ffffff',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+              zIndex: 1000,
+              padding: '6px 0'
+            }}
+          >
+            {uniqueProcs.map((p, idx) => {
+              const isChecked = selectedList.includes(p.nombre);
+              return (
+                <label
+                  key={idx}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '8px 12px',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    transition: 'background 0.2s',
+                    userSelect: 'none',
+                    color: 'var(--text-main, #334155)'
+                  }}
+                  onMouseOver={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+                  onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => handleToggle(p.nombre)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span style={{ fontWeight: isChecked ? '700' : '400' }}>{p.nombre}</span>
+                </label>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* PDF Action Links */}
+      {selectedList.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
+          {selectedList.map((nombre, i) => {
+            const matched = procList.find(p => p.nombre === nombre);
+            let fileUrl = matched?.url || '';
+            if (!fileUrl) {
+              fileUrl = `/uploads/${encodeURIComponent(nombre)}.pdf`;
+            }
+            return (
+              <a
+                key={i}
+                href={fileUrl.startsWith('http') || fileUrl.startsWith('/') ? fileUrl : `/uploads/${fileUrl || nombre}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-secondary"
+                style={{ padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', height: 'auto', margin: 0 }}
+                title={`Ver PDF de ${nombre}`}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>picture_as_pdf</span>
+                {nombre}
+              </a>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChecklistSectionGrid({
+  title,
+  items,
+  stateKey,
+  options,
+  form,
+  setForm
+}: {
+  title: string;
+  items: any[];
+  stateKey: string;
+  options: string[];
+  form: any;
+  setForm: (form: any) => void;
+}) {
+  const updateItem = (itemN: number, estado: string, obs: string) => {
+    const updatedSection = {
+      ...form[stateKey],
+      [itemN]: { estado, obs }
+    };
+    setForm({
+      ...form,
+      [stateKey]: updatedSection
+    });
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <h4 style={{ margin: 0, color: 'var(--primary-color)', fontSize: '14px', fontWeight: '800' }}>{title}</h4>
+      <div className="table-wrapper" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+        <table className="data-table" style={{ width: '100%', fontSize: '12px' }}>
+          <thead>
+            <tr>
+              <th style={{ width: '6%' }}>N°</th>
+              <th style={{ width: '44%' }}>Descripción General</th>
+              {options.map((opt) => (
+                <th key={opt} style={{ textAlign: 'center', width: opt === 'Observación' ? '30%' : '10%' }}>{opt}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => {
+              const currentVal = form[stateKey][item.n] || { estado: options[0], obs: '' };
+              return (
+                <tr key={item.n} style={{ background: item.rc && currentVal.estado !== options[0] && currentVal.estado !== 'Cumple' ? '#fee2e2' : 'transparent' }}>
+                  <td style={{ fontWeight: 'bold' }}>{item.n}</td>
+                  <td style={{ fontWeight: item.rc ? '700' : '400', color: item.rc ? '#b91c1c' : 'inherit' }}>
+                    {item.label}
+                    {item.rc && <span style={{ color: '#ef4444', fontWeight: 'bold', marginLeft: '6px', fontSize: '10px', background: '#fef2f2', padding: '1px 4px', borderRadius: '4px', border: '1px solid #f87171' }}>PUNTO CRÍTICO (RC)</span>}
+                  </td>
+                  {options.map((opt) => {
+                    if (opt === 'Observación') {
+                      return (
+                        <td key={opt}>
+                          <input 
+                            type="text" 
+                            placeholder="Añadir observación..." 
+                            value={currentVal.obs || ''} 
+                            onChange={(e) => updateItem(item.n, currentVal.estado, e.target.value)}
+                            style={{ width: '100%', padding: '4px 8px', fontSize: '11px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+                          />
+                        </td>
+                      );
+                    }
+                    
+                    const isSelected = currentVal.estado === opt;
+                    let activeBg = 'var(--primary-color, #1e3a8a)';
+                    if (opt === 'Malo' || opt === 'No Cumple') activeBg = 'var(--error-red, #ef4444)';
+                    if (opt === 'Bueno' || opt === 'Cumple') activeBg = 'var(--success-green, #10b981)';
+
+                    return (
+                      <td key={opt} style={{ textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => updateItem(item.n, opt, currentVal.obs)}
+                          style={{
+                            padding: '4px 8px',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            border: isSelected ? '1px solid ' + activeBg : '1px solid #cbd5e1',
+                            background: isSelected ? activeBg : '#ffffff',
+                            color: isSelected ? '#ffffff' : '#64748b',
+                            width: '100%',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          {opt}
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
 
 export default function App() {
@@ -263,7 +647,7 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
     return localStorage.getItem('mies_is_logged_in') === 'true';
   });
-  const [loginUser, setLoginUser] = useState<string>('admin');
+  const [loginUser, setLoginUser] = useState<string>('');
   const [loginPassword, setLoginPassword] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('mies_current_user');
@@ -275,8 +659,213 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null);
 
   // --- NAVEGACIÓN Y TABS ---
-  const [currentView, setCurrentView] = useState<'Dashboard' | 'Formulario' | 'Historial' | 'Administración' | 'RevisionTecnica'>('Dashboard');
+  const [currentView, setCurrentView] = useState<'Dashboard' | 'Formulario' | 'Historial' | 'Administración' | 'RevisionTecnica' | 'ArtPorFinalizar' | 'Mantenedores' | 'Checklist'>('Dashboard');
   const [adminActiveTab, setAdminActiveTab] = useState<'Usuarios' | 'Perfiles'>('Usuarios');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('mies_sidebar_collapsed') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('mies_sidebar_collapsed', String(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
+
+  // --- ESTADOS Y EFECTOS PARA PWA (INSTALACIÓN) ---
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBtn, setShowInstallBtn] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBtn(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setShowInstallBtn(false);
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`PWA Install outcome: ${outcome}`);
+    setDeferredPrompt(null);
+    setShowInstallBtn(false);
+  };
+
+  // --- VEHICLE CHECKLIST STATES & HANDLERS ---
+  const [checklistsList, setChecklistsList] = useState<any[]>([]);
+  const [showChecklistModal, setShowChecklistModal] = useState<boolean>(false);
+  const [selectedChecklistForView, setSelectedChecklistForView] = useState<any | null>(null);
+  const [checklistStep, setChecklistStep] = useState<number>(1);
+  const [checklistForm, setChecklistForm] = useState<any>({
+    conductor: '',
+    patenteCamion: '',
+    turno: 'A',
+    numeralMeter: '',
+    supervisorCargo: '',
+    area: '',
+    horometro: '',
+    kilometraje: '',
+    vencimientoRT: '',
+    vencimientoGases: '',
+    horaSanitizacion: '',
+    generalidades: {},
+    sistemaAutomatizacion: {},
+    aspectosMecanicos: {},
+    equipamiento: {},
+    documentacionPersonal: {},
+    camionTanque: {},
+    observaciones: '',
+    firmaConductor: '',
+    firmaSupervisor: ''
+  });
+
+  const fetchChecklists = async (vehiculoId: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/vehiculos-equipos/${vehiculoId}/checklists`);
+      if (res.ok) {
+        const data = await res.json();
+        setChecklistsList(data || []);
+        setDbError(null);
+        return;
+      } else {
+        setDbError('Error al cargar los checklists del vehículo desde la base de datos.');
+      }
+    } catch (err) {
+      console.error(err);
+      setDbError('No se pudo conectar con la base de datos remota para cargar los checklists.');
+    }
+    setChecklistsList([]);
+  };
+
+  const openNewChecklistModal = (vehiculo: any) => {
+    const initGen: any = {};
+    CHECKLIST_ITEMS.generalidades.forEach(item => {
+      initGen[item.n] = { estado: 'Bueno', obs: '' };
+    });
+    const initAut: any = {};
+    CHECKLIST_ITEMS.sistemaAutomatizacion.forEach(item => {
+      initAut[item.n] = { estado: 'Bueno', obs: '' };
+    });
+    const initMec: any = {};
+    CHECKLIST_ITEMS.aspectosMecanicos.forEach(item => {
+      initMec[item.n] = { estado: 'Bueno', obs: '' };
+    });
+    const initEq: any = {};
+    CHECKLIST_ITEMS.equipamiento.forEach(item => {
+      initEq[item.n] = { estado: 'Bueno', obs: '' };
+    });
+    const initDoc: any = {};
+    CHECKLIST_ITEMS.documentacionPersonal.forEach(item => {
+      initDoc[item.n] = { estado: 'Cumple', obs: '' };
+    });
+    const initTanque: any = {};
+    CHECKLIST_ITEMS.camionTanque.forEach(item => {
+      initTanque[item.n] = { estado: 'Cumple', obs: '' };
+    });
+
+    setChecklistForm({
+      conductor: currentUser?.nombre || '',
+      patenteCamion: vehiculo.patente,
+      turno: 'A',
+      numeralMeter: '',
+      supervisorCargo: '',
+      area: vehiculo.faena || '',
+      horometro: '',
+      kilometraje: '',
+      vencimientoRT: vehiculo.fechaVencimientoRT ? new Date(vehiculo.fechaVencimientoRT).toISOString().split('T')[0] : '',
+      vencimientoGases: '',
+      horaSanitizacion: '',
+      generalidades: initGen,
+      sistemaAutomatizacion: initAut,
+      aspectosMecanicos: initMec,
+      equipamiento: initEq,
+      documentacionPersonal: initDoc,
+      camionTanque: initTanque,
+      observaciones: '',
+      firmaConductor: '',
+      firmaSupervisor: ''
+    });
+    setChecklistStep(1);
+    setShowChecklistModal(true);
+  };
+
+  const checkCriticalControlFailure = () => {
+    const genFail = CHECKLIST_ITEMS.generalidades.some(item => 
+      item.rc && checklistForm.generalidades[item.n]?.estado === 'Malo'
+    );
+    const mecFail = CHECKLIST_ITEMS.aspectosMecanicos.some(item => 
+      item.rc && checklistForm.aspectosMecanicos[item.n]?.estado === 'Malo'
+    );
+    return genFail || mecFail;
+  };
+
+  const handleSaveChecklist = async () => {
+    if (!selectedVehiculo) return;
+    try {
+      const isRcFailure = checkCriticalControlFailure();
+      const payload = {
+        ...checklistForm,
+        generalidades: JSON.stringify(checklistForm.generalidades),
+        sistemaAutomatizacion: JSON.stringify(checklistForm.sistemaAutomatizacion),
+        aspectosMecanicos: JSON.stringify(checklistForm.aspectosMecanicos),
+        equipamiento: JSON.stringify(checklistForm.equipamiento),
+        documentacionPersonal: JSON.stringify(checklistForm.documentacionPersonal),
+        camionTanque: JSON.stringify(checklistForm.camionTanque),
+        estadoCumplimiento: isRcFailure ? 'RECHAZADO' : 'APROBADO'
+      };
+
+      const res = await fetch(`${API_BASE_URL}/vehiculos-equipos/${selectedVehiculo.id}/checklists`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        setShowChecklistModal(false);
+        fetchChecklists(selectedVehiculo.id);
+        fetchAllChecklists();
+        setDbError(null);
+        alert(isRcFailure 
+          ? 'Checklist guardado con éxito. ATENCIÓN: El vehículo queda RECHAZADO por fallar controles críticos (RC).' 
+          : 'Checklist guardado y aprobado con éxito.'
+        );
+      } else {
+        setDbError('No se pudo guardar el checklist en el servidor.');
+      }
+    } catch (err) {
+      console.error(err);
+      setDbError('Error al conectar con el servidor para guardar el checklist.');
+    }
+  };
+
+  const [allChecklistsList, setAllChecklistsList] = useState<any[]>([]);
+  const [filterChecklistSearch, setFilterChecklistSearch] = useState<string>('');
+  const [filterChecklistEstado, setFilterChecklistEstado] = useState<string>('ALL');
+
+  const fetchAllChecklists = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/checklists`);
+      if (res.ok) {
+        const data = await res.json();
+        setAllChecklistsList(data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching all checklists:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchAllChecklists();
+  }, []);
 
   // --- DATOS GLOBALES Y MODAL DE LECTURA ---
   const [artList, setArtList] = useState<FormularioART[]>(() => {
@@ -303,15 +892,15 @@ export default function App() {
   const [profilePermissions, setProfilePermissions] = useState<ProfilePermissions[]>([
     {
       rol: 'Administrador',
-      screens: { Dashboard: true, Formulario: true, Historial: true, Usuarios: true, Perfiles: true, RevisionTecnica: true }
+      screens: { Dashboard: true, Formulario: true, Historial: true, Usuarios: true, Perfiles: true, RevisionTecnica: true, ArtPorFinalizar: true, Mantenedores: true, Checklist: true }
     },
     {
       rol: 'Supervisor',
-      screens: { Dashboard: true, Formulario: true, Historial: true, Usuarios: false, Perfiles: false, RevisionTecnica: true }
+      screens: { Dashboard: true, Formulario: true, Historial: true, Usuarios: false, Perfiles: false, RevisionTecnica: true, ArtPorFinalizar: true, Mantenedores: true, Checklist: true }
     },
     {
       rol: 'Operador',
-      screens: { Dashboard: false, Formulario: true, Historial: false, Usuarios: false, Perfiles: false, RevisionTecnica: false }
+      screens: { Dashboard: false, Formulario: true, Historial: true, Usuarios: false, Perfiles: false, RevisionTecnica: false, ArtPorFinalizar: false, Mantenedores: false, Checklist: true }
     }
   ]);
 
@@ -329,7 +918,8 @@ export default function App() {
         cargo: 'Jefa Nacional HSE - MIES',
         email: 'caranguiz@mies.cl',
         perfil: 'Administrador',
-        foto: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=150'
+        foto: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=150',
+        password: 'admin123'
       },
       {
         id: 'usr-2',
@@ -338,7 +928,8 @@ export default function App() {
         cargo: 'Supervisor HSE Zona Norte',
         email: 'ralarcon@mies.cl',
         perfil: 'Supervisor',
-        foto: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=150'
+        foto: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=150',
+        password: 'admin123'
       },
       {
         id: 'usr-3',
@@ -347,7 +938,8 @@ export default function App() {
         cargo: 'Operario Mayor Electricista',
         email: 'ctapia@mies.cl',
         perfil: 'Operador',
-        foto: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=150'
+        foto: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=150',
+        password: 'admin123'
       }
     ];
   });
@@ -498,6 +1090,7 @@ export default function App() {
             id: r.id,
             codigoSeguimiento: r.codigoSeguimiento,
             estado: r.estado,
+            estadoFinalizacion: r.estadoFinalizacion || 'EN_PROCESO',
             createdAt: r.createdAt,
             updatedAt: r.updatedAt,
             paso1Planificacion: typeof r.paso1Planificacion === 'string' ? JSON.parse(r.paso1Planificacion) : r.paso1Planificacion,
@@ -609,9 +1202,9 @@ export default function App() {
     e.preventDefault();
     setAuthError(null);
 
-    const foundUser = users.find(u => u.usuario === loginUser);
+    const foundUser = users.find(u => u.email.toLowerCase().trim() === loginUser.toLowerCase().trim());
 
-    if (foundUser && loginPassword === 'admin123') {
+    if (foundUser && loginPassword === (foundUser.password || 'admin123')) {
       setCurrentUser(foundUser);
       setIsLoggedIn(true);
 
@@ -624,7 +1217,7 @@ export default function App() {
         }
       }
     } else {
-      setAuthError('Credenciales incorrectas. Verifique usuario o contraseña (admin123).');
+      setAuthError('Credenciales incorrectas. Verifique el correo electrónico o la contraseña.');
     }
   };
 
@@ -653,6 +1246,10 @@ export default function App() {
 
   const hasAccess = (screen: keyof ProfilePermissions['screens']) => {
     if (!currentUser) return false;
+    if (currentUser.perfil === 'Administrador') return true;
+    if (currentUser.screens && currentUser.screens[screen] !== undefined) {
+      return currentUser.screens[screen];
+    }
     const permissions = profilePermissions.find(p => p.rol === currentUser.perfil);
     return permissions ? permissions.screens[screen] : false;
   };
@@ -666,11 +1263,15 @@ export default function App() {
   const [profileCargo, setProfileCargo] = useState<string>('');
   const [profileEmail, setProfileEmail] = useState<string>('');
   const [profileFoto, setProfileFoto] = useState<string>('');
+  const [profilePassword, setProfilePassword] = useState<string>('');
   const [formUserUsuario, setFormUserUsuario] = useState<string>('');
   const [formUserCargo, setFormUserCargo] = useState<string>('');
   const [formUserEmail, setFormUserEmail] = useState<string>('');
   const [formUserPerfil, setFormUserPerfil] = useState<'Administrador' | 'Supervisor' | 'Operador'>('Operador');
   const [formUserFoto, setFormUserFoto] = useState<string>('');
+  const [formUserVehiculos, setFormUserVehiculos] = useState<string[]>([]);
+  const [formUserPassword, setFormUserPassword] = useState<string>('');
+  const [formUserScreens, setFormUserScreens] = useState<{ [key in keyof ProfilePermissions['screens']]?: boolean }>({});
 
   const randomAvatars = [
     'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150',
@@ -688,6 +1289,10 @@ export default function App() {
       setFormUserEmail(user.email);
       setFormUserPerfil(user.perfil);
       setFormUserFoto(user.foto);
+      setFormUserVehiculos(user.vehiculosAsociados || []);
+      setFormUserPassword(user.password || 'admin123');
+      const defaultScreens = profilePermissions.find(p => p.rol === user.perfil)?.screens || {};
+      setFormUserScreens(user.screens || { ...defaultScreens });
     } else {
       setEditModeUser(null);
       setFormUserNombre('');
@@ -696,6 +1301,10 @@ export default function App() {
       setFormUserEmail('');
       setFormUserPerfil('Operador');
       setFormUserFoto(randomAvatars[Math.floor(Math.random() * randomAvatars.length)]);
+      setFormUserVehiculos([]);
+      setFormUserPassword('admin123');
+      const defaultScreens = profilePermissions.find(p => p.rol === 'Operador')?.screens || {};
+      setFormUserScreens({ ...defaultScreens });
     }
     setShowUserModal(true);
   };
@@ -704,15 +1313,22 @@ export default function App() {
     if (!formUserNombre || !formUserUsuario || !formUserEmail) return;
 
     if (editModeUser) {
-      setUsers(users.map(u => u.id === editModeUser.id ? {
-        ...u,
+      const updatedUser: User = {
+        ...editModeUser,
         nombre: formUserNombre,
         usuario: formUserUsuario,
         cargo: formUserCargo,
         email: formUserEmail,
         perfil: formUserPerfil,
-        foto: formUserFoto
-      } : u));
+        foto: formUserFoto,
+        vehiculosAsociados: formUserVehiculos,
+        password: formUserPassword,
+        screens: formUserScreens
+      };
+      setUsers(users.map(u => u.id === editModeUser.id ? updatedUser : u));
+      if (currentUser && currentUser.id === editModeUser.id) {
+        setCurrentUser(updatedUser);
+      }
     } else {
       const newUser: User = {
         id: `usr-${Date.now()}`,
@@ -721,7 +1337,10 @@ export default function App() {
         cargo: formUserCargo,
         email: formUserEmail,
         perfil: formUserPerfil,
-        foto: formUserFoto
+        foto: formUserFoto,
+        vehiculosAsociados: formUserVehiculos,
+        password: formUserPassword,
+        screens: formUserScreens
       };
       setUsers([...users, newUser]);
     }
@@ -734,6 +1353,7 @@ export default function App() {
       setProfileCargo(currentUser.cargo || '');
       setProfileEmail(currentUser.email);
       setProfileFoto(currentUser.foto);
+      setProfilePassword(currentUser.password || 'admin123');
       setShowProfileModal(true);
     }
   };
@@ -746,7 +1366,8 @@ export default function App() {
       nombre: profileNombre,
       cargo: profileCargo,
       email: profileEmail,
-      foto: profileFoto
+      foto: profileFoto,
+      password: profilePassword
     };
 
     setCurrentUser(updatedUser);
@@ -769,9 +1390,9 @@ export default function App() {
 
   const [paso1, setPaso1] = useState<Paso1Planificacion>({
     supervisor_asigna: '',
-    empresa: 'MIES S.A.',
-    gerencia: '',
-    superintendencia_direccion: '',
+    empresa: 'Mies - Copec',
+    gerencia: 'Gser',
+    superintendencia_direccion: 'logística',
     fecha: new Date().toISOString().split('T')[0],
     hora_inicio: '',
     hora_termino: '',
@@ -814,7 +1435,7 @@ export default function App() {
   const initRiesgoCritico = (nombre: string): RiesgoCriticoEspecifico => {
     const filas: FilaRiesgo[] = [];
     for (let i = 1; i <= 10; i++) {
-      filas.push({ numero: '', cumple: true }); // preset to empty string as per request, with cumple preset to true (SI)
+      filas.push({ numero: '', cumple: true, noAplica: false }); // preset to empty string as per request, with cumple preset to true (SI)
     }
     return { nombre, codigo: '', filas }; // preset to empty string for code
   };
@@ -865,12 +1486,18 @@ export default function App() {
     }
   };
 
-  const handleRowChange = (type: 'supervisor' | 'trabajador', riskIndex: number, rowIndex: number, field: 'numero' | 'cumple', value: any) => {
+  const handleRowChange = (type: 'supervisor' | 'trabajador', riskIndex: number, rowIndex: number, field: 'numero' | 'cumple' | 'noAplica', value: any) => {
     if (type === 'supervisor') {
       const updated = supervisorRiesgosCriticos.map((risk, i) => {
         if (i === riskIndex) {
           const updatedFilas = risk.filas.map((row, j) => {
             if (j === rowIndex) {
+              if (field === 'cumple') {
+                return { ...row, cumple: value, noAplica: value ? false : row.noAplica };
+              }
+              if (field === 'noAplica') {
+                return { ...row, noAplica: value, cumple: value ? false : row.cumple };
+              }
               return { ...row, [field]: value };
             }
             return row;
@@ -885,6 +1512,12 @@ export default function App() {
         if (i === riskIndex) {
           const updatedFilas = risk.filas.map((row, j) => {
             if (j === rowIndex) {
+              if (field === 'cumple') {
+                return { ...row, cumple: value, noAplica: value ? false : row.noAplica };
+              }
+              if (field === 'noAplica') {
+                return { ...row, noAplica: value, cumple: value ? false : row.cumple };
+              }
               return { ...row, [field]: value };
             }
             return row;
@@ -1005,6 +1638,20 @@ export default function App() {
   // Formulario mantenedores
   const [formMantCategoria, setFormMantCategoria] = useState<string>('faena');
   const [formMantValor, setFormMantValor] = useState<string>('');
+
+  // Estados para pantalla unificada de Mantenedores
+  const [mantActiveTab, setMantActiveTab] = useState<'supervisor' | 'trabajo' | 'lugar_faena' | 'procedimiento' | 'riesgo_localizado' | 'faena_contras'>('supervisor');
+  const [formSupervisorVal, setFormSupervisorVal] = useState<string>('');
+  const [formTrabajoVal, setFormTrabajoVal] = useState<string>('');
+  const [formLugarVal, setFormLugarVal] = useState<string>('');
+  const [formProcNombre, setFormProcNombre] = useState<string>('');
+  const [formProcFileBase64, setFormProcFileBase64] = useState<string>('');
+  const [formProcFileName, setFormProcFileName] = useState<string>('');
+  const [formRiesgoVal, setFormRiesgoVal] = useState<string>('');
+  const [formMedidaVal, setFormMedidaVal] = useState<string>('');
+  const [formFaenaContraVal, setFormFaenaContraVal] = useState<string>('');
+  const [formFaenaContraCat, setFormFaenaContraCat] = useState<'faena' | 'contratista'>('faena');
+  const [procUploadLoading, setProcUploadLoading] = useState<boolean>(false);
 
 
 
@@ -1210,6 +1857,109 @@ export default function App() {
     }
   };
 
+  // Handler para agregar mantenedor de tipo simple (Supervisor, Trabajo, Lugar)
+  const handleAddSimpleMantenedor = async (categoria: string, valor: string, clearCallback: () => void) => {
+    if (!valor.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenedores`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoria, valor: valor.trim() })
+      });
+      if (res.ok) {
+        await fetchMantenedores();
+        clearCallback();
+        setDbError(null);
+      } else {
+        alert('Error al registrar el elemento en la base de datos.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error de red: No se pudo conectar al servidor.');
+    }
+  };
+
+  // Handler para agregar riesgos localizados predefinidos
+  const handleAddPredefinedRiskMantenedor = async (riesgo: string, medida: string) => {
+    if (!riesgo.trim() || !medida.trim()) return;
+    const valor = JSON.stringify({ riesgo: riesgo.trim(), medida_control: medida.trim() });
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenedores`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoria: 'riesgo_localizado', valor })
+      });
+      if (res.ok) {
+        await fetchMantenedores();
+        setFormRiesgoVal('');
+        setFormMedidaVal('');
+        setDbError(null);
+      } else {
+        alert('Error al registrar el riesgo en la base de datos.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error de red: No se pudo conectar al servidor.');
+    }
+  };
+
+  // Handler para subir PDF y agregar procedimiento
+  const handleAddProcedureMantenedor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formProcNombre.trim()) {
+      alert('Por favor ingrese el nombre del procedimiento.');
+      return;
+    }
+
+    let url = '';
+    if (formProcFileBase64 && formProcFileName) {
+      setProcUploadLoading(true);
+      try {
+        const uploadRes = await fetch(`${API_BASE_URL}/procedimientos/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileName: formProcFileName,
+            fileData: formProcFileBase64
+          })
+        });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          url = uploadData.url || `/uploads/${formProcFileName}`;
+        } else {
+          alert('Error al subir el archivo PDF al servidor. Se guardará sin archivo adjunto.');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Error de conexión al subir el PDF. Se guardará sin archivo adjunto.');
+      } finally {
+        setProcUploadLoading(false);
+      }
+    }
+
+    const valor = JSON.stringify({ nombre: formProcNombre.trim(), url });
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenedores`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoria: 'procedimiento', valor })
+      });
+      if (res.ok) {
+        await fetchMantenedores();
+        setFormProcNombre('');
+        setFormProcFileBase64('');
+        setFormProcFileName('');
+        setDbError(null);
+        alert('Procedimiento registrado exitosamente.');
+      } else {
+        alert('Error al registrar el procedimiento en la base de datos.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error de red al registrar el procedimiento.');
+    }
+  };
+
   const openCreateVehiculoModal = () => {
     setEditModeVehiculo(null);
     setFormVehTipo('camion');
@@ -1342,6 +2092,34 @@ export default function App() {
     setPaso3(paso3.filter((_, i) => i !== index));
   };
 
+  const handleAddPredefinedRiesgo = (riesgo: string, medida: string) => {
+    if (paso3.length === 1 && !paso3[0].riesgo && !paso3[0].medida_control) {
+      setPaso3([{ riesgo, medida_control: medida }]);
+    } else {
+      setPaso3([...paso3, { riesgo, medida_control: medida }]);
+    }
+  };
+
+  const handleFinalizarART = async (id: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/formularios-art/${id}/finalizar`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      if (res.ok) {
+        alert('ART Finalizada exitosamente.');
+        await fetchARTs();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(`Error al finalizar ART: ${errData.mensaje || 'Error desconocido'}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error de red al intentar finalizar la ART.');
+    }
+  };
+
   const handleIntegranteChange = (index: number, field: keyof IntegranteEquipo, value: any) => {
     const updated = integrantes.map((int, i) => {
       if (i === index) {
@@ -1442,9 +2220,9 @@ export default function App() {
     setWizardResult(null);
     setPaso1({
       supervisor_asigna: '',
-      empresa: 'MIES S.A.',
-      gerencia: '',
-      superintendencia_direccion: '',
+      empresa: 'Mies - Copec',
+      gerencia: 'Gser',
+      superintendencia_direccion: 'logística',
       fecha: new Date().toISOString().split('T')[0],
       hora_inicio: '',
       hora_termino: '',
@@ -1558,17 +2336,15 @@ export default function App() {
 
           <form onSubmit={handleLogin}>
             <div className="login-form-group">
-              <label>Usuario corporativo</label>
-              <select
+              <label>Correo Electrónico Corporativo</label>
+              <input
+                type="email"
+                placeholder="ejemplo@mies.cl"
                 value={loginUser}
                 onChange={(e) => setLoginUser(e.target.value)}
-                style={{ width: '100%' }}
-                className="w-full text-slate-800 dark:text-slate-800"
-              >
-                <option value="admin">Administrador (admin)</option>
-                <option value="supervisor">Supervisor (supervisor)</option>
-                <option value="operador">Operador (operador)</option>
-              </select>
+                required
+                className="w-full text-slate-800"
+              />
             </div>
 
             <div className="login-form-group">
@@ -1597,10 +2373,27 @@ export default function App() {
   return (
     <div className="app-layout">
       {/* SIDEBAR NAVIGATION MASTER PANEL */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
-          <img src="https://www.mies.cl/img/logo.svg" alt="MIES" className="sidebar-logo" />
-          <span className="sidebar-logo-text">MIES HSE</span>
+          {!isSidebarCollapsed && (
+            <>
+              <img src="https://www.mies.cl/img/logo.svg" alt="MIES" className="sidebar-logo" />
+              <span className="sidebar-logo-text">MIES HSE</span>
+            </>
+          )}
+          {isSidebarCollapsed && (
+            <img src="https://www.mies.cl/img/logo.svg" alt="MIES" className="sidebar-logo collapsed" />
+          )}
+          <button
+            type="button"
+            className="sidebar-collapse-btn"
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            title={isSidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
+          >
+            <span className="material-symbols-outlined">
+              {isSidebarCollapsed ? "chevron_right" : "chevron_left"}
+            </span>
+          </button>
         </div>
 
         <div className="sidebar-profile-card" onClick={handleOpenProfileModal} style={{ cursor: 'pointer' }} title="Haga clic para actualizar su perfil">
@@ -1624,76 +2417,168 @@ export default function App() {
                   setSelectedArtForModal(null);
                 }}
               >
-                <span className="menu-item-icon">📊</span>
+                <span className="material-symbols-outlined menu-item-icon">dashboard</span>
                 <span className="menu-item-text">Panel de Control</span>
               </button>
             </li>
           )}
-          {hasAccess('Formulario') && (
-            <li>
-              <button
-                className={`menu-item ${currentView === 'Formulario' ? 'active' : ''}`}
-                onClick={() => {
-                  setCurrentView('Formulario');
-                  handleWizardReset();
-                  setSelectedArtForModal(null);
-                }}
-              >
-                <span className="menu-item-icon">📝</span>
-                <span className="menu-item-text">Nuevo Formulario ART</span>
-              </button>
-            </li>
+
+          {/* GRUPO ART */}
+          {(hasAccess('Formulario') || hasAccess('ArtPorFinalizar') || hasAccess('Historial')) && (
+            <>
+              <li className="sidebar-section-header">
+                {!isSidebarCollapsed ? 'Gestión ART' : <div style={{ height: '1px', background: 'var(--card-border, #e2e8f0)', margin: '8px 12px' }} />}
+              </li>
+              
+              {hasAccess('Formulario') && (
+                <li>
+                  <button
+                    className={`menu-item ${currentView === 'Formulario' ? 'active' : ''}`}
+                    onClick={() => {
+                      setCurrentView('Formulario');
+                      handleWizardReset();
+                      setSelectedArtForModal(null);
+                    }}
+                    style={{ paddingLeft: !isSidebarCollapsed ? '32px' : '20px' }}
+                  >
+                    <span className="material-symbols-outlined menu-item-icon">edit_document</span>
+                    <span className="menu-item-text">Nuevo Formulario</span>
+                  </button>
+                </li>
+              )}
+
+              {hasAccess('ArtPorFinalizar') && (
+                <li>
+                  <button
+                    className={`menu-item ${currentView === 'ArtPorFinalizar' ? 'active' : ''}`}
+                    onClick={() => {
+                      setCurrentView('ArtPorFinalizar');
+                      setSelectedArtForModal(null);
+                    }}
+                    style={{ paddingLeft: !isSidebarCollapsed ? '32px' : '20px' }}
+                  >
+                    <span className="material-symbols-outlined menu-item-icon">pending_actions</span>
+                    <span className="menu-item-text">ART por Finalizar</span>
+                  </button>
+                </li>
+              )}
+
+              {hasAccess('Historial') && (
+                <li>
+                  <button
+                    className={`menu-item ${currentView === 'Historial' ? 'active' : ''}`}
+                    onClick={() => {
+                      setCurrentView('Historial');
+                      setSelectedArtForModal(null);
+                    }}
+                    style={{ paddingLeft: !isSidebarCollapsed ? '32px' : '20px' }}
+                  >
+                    <span className="material-symbols-outlined menu-item-icon">inventory_2</span>
+                    <span className="menu-item-text">Historial ART</span>
+                  </button>
+                </li>
+              )}
+            </>
           )}
-          {hasAccess('Historial') && (
-            <li>
-              <button
-                className={`menu-item ${currentView === 'Historial' ? 'active' : ''}`}
-                onClick={() => {
-                  setCurrentView('Historial');
-                  setSelectedArtForModal(null);
-                }}
-              >
-                <span className="menu-item-icon">🗂️</span>
-                <span className="menu-item-text">Historial de Formularios</span>
-              </button>
-            </li>
+
+          {/* GRUPO VEHÍCULOS */}
+          {(hasAccess('RevisionTecnica') || hasAccess('Checklist')) && (
+            <>
+              <li className="sidebar-section-header">
+                {!isSidebarCollapsed ? 'Gestión de Vehículos' : <div style={{ height: '1px', background: 'var(--card-border, #e2e8f0)', margin: '8px 12px' }} />}
+              </li>
+
+              {hasAccess('RevisionTecnica') && (
+                <li>
+                  <button
+                    className={`menu-item ${currentView === 'RevisionTecnica' ? 'active' : ''}`}
+                    onClick={() => {
+                      setCurrentView('RevisionTecnica');
+                      setSelectedArtForModal(null);
+                      setSelectedVehiculo(null);
+                    }}
+                    style={{ paddingLeft: !isSidebarCollapsed ? '32px' : '20px' }}
+                  >
+                    <span className="material-symbols-outlined menu-item-icon">local_shipping</span>
+                    <span className="menu-item-text">Gestionar Vehículos</span>
+                  </button>
+                </li>
+              )}
+
+              {hasAccess('Checklist') && (
+                <li>
+                  <button
+                    className={`menu-item ${currentView === 'Checklist' ? 'active' : ''}`}
+                    onClick={() => {
+                      setCurrentView('Checklist');
+                      setSelectedArtForModal(null);
+                      setSelectedVehiculo(null);
+                      fetchAllChecklists();
+                    }}
+                    style={{ paddingLeft: !isSidebarCollapsed ? '32px' : '20px' }}
+                  >
+                    <span className="material-symbols-outlined menu-item-icon">assignment_turned_in</span>
+                    <span className="menu-item-text">Checklists Diarios</span>
+                  </button>
+                </li>
+              )}
+            </>
           )}
-          {hasAccess('RevisionTecnica') && (
-            <li>
-              <button
-                className={`menu-item ${currentView === 'RevisionTecnica' ? 'active' : ''}`}
-                onClick={() => {
-                  setCurrentView('RevisionTecnica');
-                  setSelectedArtForModal(null);
-                  setSelectedVehiculo(null);
-                }}
-              >
-                <span className="menu-item-icon">🚚</span>
-                <span className="menu-item-text">Revisión Técnica</span>
-              </button>
-            </li>
-          )}
-          {(hasAccess('Usuarios') || hasAccess('Perfiles')) && (
-            <li>
-              <button
-                className={`menu-item ${currentView === 'Administración' ? 'active' : ''}`}
-                onClick={() => {
-                  setCurrentView('Administración');
-                  if (hasAccess('Usuarios')) setAdminActiveTab('Usuarios');
-                  else setAdminActiveTab('Perfiles');
-                  setSelectedArtForModal(null);
-                }}
-              >
-                <span className="menu-item-icon">⚙️</span>
-                <span className="menu-item-text">Administración</span>
-              </button>
-            </li>
+
+          {/* SISTEMA */}
+          {(hasAccess('Mantenedores') || hasAccess('Usuarios') || hasAccess('Perfiles')) && (
+            <>
+              <li className="sidebar-section-header">
+                {!isSidebarCollapsed ? 'Sistema' : <div style={{ height: '1px', background: 'var(--card-border, #e2e8f0)', margin: '8px 12px' }} />}
+              </li>
+
+              {hasAccess('Mantenedores') && (
+                <li>
+                  <button
+                    className={`menu-item ${currentView === 'Mantenedores' ? 'active' : ''}`}
+                    onClick={() => {
+                      setCurrentView('Mantenedores');
+                      setSelectedArtForModal(null);
+                    }}
+                    style={{ paddingLeft: !isSidebarCollapsed ? '32px' : '20px' }}
+                  >
+                    <span className="material-symbols-outlined menu-item-icon">tune</span>
+                    <span className="menu-item-text">Mantenedores</span>
+                  </button>
+                </li>
+              )}
+
+              {(hasAccess('Usuarios') || hasAccess('Perfiles')) && (
+                <li>
+                  <button
+                    className={`menu-item ${currentView === 'Administración' ? 'active' : ''}`}
+                    onClick={() => {
+                      setCurrentView('Administración');
+                      if (hasAccess('Usuarios')) setAdminActiveTab('Usuarios');
+                      else setAdminActiveTab('Perfiles');
+                      setSelectedArtForModal(null);
+                    }}
+                    style={{ paddingLeft: !isSidebarCollapsed ? '32px' : '20px' }}
+                  >
+                    <span className="material-symbols-outlined menu-item-icon">admin_panel_settings</span>
+                    <span className="menu-item-text">Administración</span>
+                  </button>
+                </li>
+              )}
+            </>
           )}
         </ul>
 
         <div className="sidebar-footer">
+          {showInstallBtn && (
+            <button className="install-btn" onClick={handleInstallApp} title="Instalar aplicación en tu dispositivo">
+              <span className="material-symbols-outlined menu-item-icon">download_for_offline</span>
+              {!isSidebarCollapsed && <span className="install-text">Instalar App</span>}
+            </button>
+          )}
           <button className="logout-btn" onClick={handleLogout}>
-            <span>🚪 Cerrar Sesión</span>
+            <span className="material-symbols-outlined menu-item-icon">logout</span>
+            <span className="logout-text">Cerrar Sesión</span>
           </button>
         </div>
       </aside>
@@ -1926,8 +2811,9 @@ export default function App() {
                                     <thead>
                                       <tr style={{ background: '#e2e8f0', color: '#1e293b' }}>
                                         <th style={{ padding: '3px 4px', border: '1px solid #94a3b8', textAlign: 'center', width: '40%' }}>N°</th>
-                                        <th style={{ padding: '3px 4px', border: '1px solid #94a3b8', textAlign: 'center', width: '30%' }}>SI</th>
-                                        <th style={{ padding: '3px 4px', border: '1px solid #94a3b8', textAlign: 'center', width: '30%' }}>NO</th>
+                                        <th style={{ padding: '3px 4px', border: '1px solid #94a3b8', textAlign: 'center', width: '20%' }}>SI</th>
+                                        <th style={{ padding: '3px 4px', border: '1px solid #94a3b8', textAlign: 'center', width: '20%' }}>NO</th>
+                                        <th style={{ padding: '3px 4px', border: '1px solid #94a3b8', textAlign: 'center', width: '20%' }}>N/A</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -1937,10 +2823,13 @@ export default function App() {
                                             {row.numero ? `N° ${row.numero}` : '-'}
                                           </td>
                                           <td style={{ padding: '3px 4px', border: '1px solid #cbd5e1', textAlign: 'center', fontWeight: 'bold', color: '#16a34a' }}>
-                                            {row.cumple ? '✓' : ''}
+                                            {row.cumple && !row.noAplica ? '✓' : ''}
                                           </td>
                                           <td style={{ padding: '3px 4px', border: '1px solid #cbd5e1', textAlign: 'center', fontWeight: 'bold', color: '#dc2626' }}>
-                                            {!row.cumple ? '✗' : ''}
+                                            {!row.cumple && !row.noAplica ? '✗' : ''}
+                                          </td>
+                                          <td style={{ padding: '3px 4px', border: '1px solid #cbd5e1', textAlign: 'center', fontWeight: 'bold', color: '#006064' }}>
+                                            {row.noAplica ? '✓' : ''}
                                           </td>
                                         </tr>
                                       ))}
@@ -1969,8 +2858,9 @@ export default function App() {
                                     <thead>
                                       <tr style={{ background: '#f3e8ff', color: '#5b21b6' }}>
                                         <th style={{ padding: '3px 4px', border: '1px solid #c084fc', textAlign: 'center', width: '40%' }}>N°</th>
-                                        <th style={{ padding: '3px 4px', border: '1px solid #c084fc', textAlign: 'center', width: '30%' }}>SI</th>
-                                        <th style={{ padding: '3px 4px', border: '1px solid #c084fc', textAlign: 'center', width: '30%' }}>NO</th>
+                                        <th style={{ padding: '3px 4px', border: '1px solid #c084fc', textAlign: 'center', width: '20%' }}>SI</th>
+                                        <th style={{ padding: '3px 4px', border: '1px solid #c084fc', textAlign: 'center', width: '20%' }}>NO</th>
+                                        <th style={{ padding: '3px 4px', border: '1px solid #c084fc', textAlign: 'center', width: '20%' }}>N/A</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -1980,10 +2870,13 @@ export default function App() {
                                             {row.numero ? `N° ${row.numero}` : '-'}
                                           </td>
                                           <td style={{ padding: '3px 4px', border: '1px solid #e9d5ff', textAlign: 'center', fontWeight: 'bold', color: '#16a34a' }}>
-                                            {row.cumple ? '✓' : ''}
+                                            {row.cumple && !row.noAplica ? '✓' : ''}
                                           </td>
                                           <td style={{ padding: '3px 4px', border: '1px solid #e9d5ff', textAlign: 'center', fontWeight: 'bold', color: '#dc2626' }}>
-                                            {!row.cumple ? '✗' : ''}
+                                            {!row.cumple && !row.noAplica ? '✗' : ''}
+                                          </td>
+                                          <td style={{ padding: '3px 4px', border: '1px solid #e9d5ff', textAlign: 'center', fontWeight: 'bold', color: '#006064' }}>
+                                            {row.noAplica ? '✓' : ''}
                                           </td>
                                         </tr>
                                       ))}
@@ -2289,23 +3182,56 @@ export default function App() {
                   </button>
                 </div>
 
-                {hasAccess('Formulario') && (
-                  <div className="mb-6 p-6 rounded-2xl text-white shadow-md flex flex-col md:flex-row justify-between items-center gap-4" style={{ background: 'linear-gradient(135deg, #1e40af 0%, #4338ca 100%)', borderRadius: '16px' }}>
-                    <div>
-                      <h3 className="text-xl font-bold mb-1" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, fontSize: '18px', color: '#ffffff' }}>
-                        <span>⚡</span> Registrar Nuevo Formulario ART
-                      </h3>
-                      <p className="text-sm opacity-90" style={{ margin: '4px 0 0 0', fontSize: '13.5px', color: '#bfdbfe' }}>Inicie la planificación, autoverificación y firmas digitales de análisis de riesgos en terreno de forma inmediata.</p>
+                <div className="dashboard-shortcuts-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+                  {hasAccess('Formulario') && (
+                    <div className="p-6 rounded-2xl text-white shadow-md flex flex-col justify-between gap-4" style={{ background: 'linear-gradient(135deg, #1e40af 0%, #4338ca 100%)', borderRadius: '16px', minHeight: '160px' }}>
+                      <div>
+                        <h3 className="text-xl font-bold mb-1" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, fontSize: '18px', color: '#ffffff' }}>
+                          <span>⚡</span> Registrar Nuevo Formulario ART
+                        </h3>
+                        <p className="text-sm opacity-90" style={{ margin: '8px 0 0 0', fontSize: '13.5px', color: '#bfdbfe', lineHeight: '1.4' }}>
+                          Inicie la planificación, autoverificación y firmas digitales de análisis de riesgos en terreno de forma inmediata.
+                        </p>
+                      </div>
+                      <button 
+                        onClick={() => {
+                          setCurrentView('Formulario');
+                          handleWizardReset();
+                          setSelectedArtForModal(null);
+                        }} 
+                        className="px-6 py-3 bg-white text-blue-700 font-bold rounded-xl hover:bg-blue-50 transition-all shadow-sm flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer hover:scale-105 transform active:scale-95"
+                        style={{ fontSize: '14px', border: 'none', color: '#1e40af', background: '#ffffff', borderRadius: '10px', padding: '10px 20px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', width: 'fit-content' }}
+                      >
+                        📝 Iniciar Formulario ART
+                      </button>
                     </div>
-                    <button 
-                      onClick={() => setCurrentView('Formulario')} 
-                      className="px-6 py-3 bg-white text-blue-700 font-bold rounded-xl hover:bg-blue-50 transition-all shadow-sm flex items-center gap-2 whitespace-nowrap cursor-pointer hover:scale-105 transform active:scale-95"
-                      style={{ fontSize: '14px', border: 'none', color: '#1e40af', background: '#ffffff', borderRadius: '10px', padding: '10px 20px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
-                    >
-                      📝 Iniciar Formulario ART
-                    </button>
-                  </div>
-                )}
+                  )}
+
+                  {hasAccess('RevisionTecnica') && (
+                    <div className="p-6 rounded-2xl text-white shadow-md flex flex-col justify-between gap-4" style={{ background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)', borderRadius: '16px', minHeight: '160px' }}>
+                      <div>
+                        <h3 className="text-xl font-bold mb-1" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, fontSize: '18px', color: '#ffffff' }}>
+                          <span>📋</span> Crear Checklist Camión Tanque
+                        </h3>
+                        <p className="text-sm opacity-90" style={{ margin: '8px 0 0 0', fontSize: '13.5px', color: '#a7f3d0', lineHeight: '1.4' }}>
+                          Realice la inspección pre-operacional diaria del camión tanque para asegurar el cumplimiento de estándares de seguridad.
+                        </p>
+                      </div>
+                      <button 
+                        onClick={() => {
+                          setCurrentView('Checklist');
+                          setSelectedArtForModal(null);
+                          setSelectedVehiculo(null);
+                          fetchAllChecklists();
+                        }} 
+                        className="px-6 py-3 bg-white text-emerald-700 font-bold rounded-xl hover:bg-emerald-50 transition-all shadow-sm flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer hover:scale-105 transform active:scale-95"
+                        style={{ fontSize: '14px', border: 'none', color: '#059669', background: '#ffffff', borderRadius: '10px', padding: '10px 20px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', width: 'fit-content' }}
+                      >
+                        🚛 Iniciar Checklist
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 {/* KPI METRIC CARDS */}
                 <div className="kpi-grid">
@@ -2609,7 +3535,7 @@ export default function App() {
                       <div className="vehicle-cards-grid">
                         {filtered.map(v => {
                           return (
-                            <div key={v.id} className="vehicle-card" onClick={() => { setSelectedVehiculo(v); fetchKilometrajes(v.id); }}>
+                            <div key={v.id} className="vehicle-card" onClick={() => { setSelectedVehiculo(v); fetchKilometrajes(v.id); fetchChecklists(v.id); }}>
                               <div className="vehicle-card-img-wrap">
                                 <img src={v.fotoUrl || ''} alt={v.patente} className="vehicle-card-img" />
                                 <span className="vehicle-card-badge">{v.tipo}</span>
@@ -2677,7 +3603,7 @@ export default function App() {
                           <tbody>
                             {filtered.map(v => {
                               return (
-                                <tr key={v.id} onClick={() => { setSelectedVehiculo(v); fetchKilometrajes(v.id); }} style={{ cursor: 'pointer' }}>
+                                <tr key={v.id} onClick={() => { setSelectedVehiculo(v); fetchKilometrajes(v.id); fetchChecklists(v.id); }} style={{ cursor: 'pointer' }}>
                                   <td>
                                     <img src={v.fotoUrl || ''} alt={v.patente} style={{ width: '40px', height: '30px', objectFit: 'cover', borderRadius: '4px' }} />
                                   </td>
@@ -2805,15 +3731,77 @@ export default function App() {
                               </>
                             )}
                           </div>
+                          {selectedVehiculo.tipo === 'camion' && (
+                            <div style={{ marginTop: '20px', borderTop: '1px solid var(--card-border)', paddingTop: '15px' }}>
+                              <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: '800', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>history</span>
+                                Historial Checklists Diarios
+                              </h4>
+                              {checklistsList.length === 0 ? (
+                                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                                  No hay checklists registrados para este camión.
+                                </p>
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto', paddingRight: '4px' }}>
+                                  {checklistsList.map((ch: any) => {
+                                    const isAprobado = ch.estadoCumplimiento === 'APROBADO';
+                                    return (
+                                      <div 
+                                        key={ch.id} 
+                                        onClick={() => setSelectedChecklistForView(ch)}
+                                        style={{
+                                          padding: '8px 10px',
+                                          borderRadius: '8px',
+                                          border: '1px solid var(--card-border)',
+                                          background: '#f8fafc',
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          justifyContent: 'space-between',
+                                          alignItems: 'center',
+                                          transition: 'background 0.2s'
+                                        }}
+                                        onMouseOver={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+                                        onMouseOut={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                                        title="Haga clic para ver detalles del checklist"
+                                      >
+                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                          <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-main)' }}>
+                                            {new Date(ch.fecha).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                          </span>
+                                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                            Cond: {ch.conductor}
+                                          </span>
+                                        </div>
+                                        <span 
+                                          style={{
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            fontSize: '10px',
+                                            fontWeight: '700',
+                                            background: isAprobado ? 'var(--success-bg)' : 'var(--error-bg)',
+                                            color: isAprobado ? 'var(--success-green)' : 'var(--error-red)'
+                                          }}
+                                        >
+                                          {ch.estadoCumplimiento}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
 
-                        {/* COLUMNA 2: CALENDARIO DE KILOMETRAJE */}
+                        {/* COLUMNA 2: CALENDARIO DE KILOMETRAJE / HORÓMETRO */}
                         <div>
                           <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: '800', color: 'var(--primary-color)' }}>
-                            📅 Registro de Kilometraje Diario
+                            {selectedVehiculo.tipo === 'equipo' ? '📅 Registro de Horas de Uso por día' : '📅 Registro de Kilometraje Diario'}
                           </h4>
                           <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '15px' }}>
-                            Haga clic en cualquier día del calendario para ingresar el kilometraje recorrido por esta unidad.
+                            {selectedVehiculo.tipo === 'equipo' 
+                              ? 'Haga clic en cualquier día del calendario para ingresar las horas de uso (horómetro) acumuladas por esta unidad.'
+                              : 'Haga clic en cualquier día del calendario para ingresar el kilometraje recorrido por esta unidad.'}
                           </p>
 
                           {/* COMPONENTE WIDGET CALENDARIO */}
@@ -2853,8 +3841,8 @@ export default function App() {
                                       >
                                         <span className="calendar-day-num">{day.dayNum}</span>
                                         {logged && (
-                                          <span className="calendar-day-value" title={`${logged.kilometraje} km`}>
-                                            {logged.kilometraje}k
+                                          <span className="calendar-day-value" title={selectedVehiculo.tipo === 'equipo' ? `${logged.kilometraje} hrs` : `${logged.kilometraje} km`}>
+                                            {logged.kilometraje}{selectedVehiculo.tipo === 'equipo' ? 'h' : 'k'}
                                           </span>
                                         )}
                                       </div>
@@ -2876,6 +3864,15 @@ export default function App() {
                               ✏️ Editar Datos
                             </button>
                           </>
+                        )}
+                        {selectedVehiculo.tipo === 'camion' && (
+                          <button 
+                            className="btn-primary" 
+                            onClick={() => openNewChecklistModal(selectedVehiculo)} 
+                            style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', color: 'white' }}
+                          >
+                            📋 Checklist Diario
+                          </button>
                         )}
                         <button className="btn-primary" onClick={() => setSelectedVehiculo(null)}>
                           Listo
@@ -3007,12 +4004,12 @@ export default function App() {
                   </div>
                 )}
 
-                {/* MODAL: INPUT DIARIO DE KILOMETRAJE */}
+                {/* MODAL: INPUT DIARIO DE KILOMETRAJE / HORÓMETRO */}
                 {showKilometrajeInputModal && (
                   <div className="modal-overlay" style={{ zIndex: 110, padding: '40px 20px' }}>
                     <div className="modal-container small" style={{ animation: 'fadeIn 0.2s ease' }}>
                       <div className="modal-header">
-                        <h3>Registrar Kilometraje</h3>
+                        <h3>{selectedVehiculo?.tipo === 'equipo' ? 'Registrar Horas de Uso' : 'Registrar Kilometraje'}</h3>
                         <button className="action-icon-btn" onClick={() => setShowKilometrajeInputModal(false)}>×</button>
                       </div>
                       <form onSubmit={handleSaveKilometraje}>
@@ -3022,11 +4019,14 @@ export default function App() {
                             <input type="text" value={currentKilometrajeDate} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} />
                           </div>
                           <div className="form-field">
-                            <label>Kilometraje Recorrido (KM acumulado) <span className="required-star">*</span></label>
+                            <label>
+                              {selectedVehiculo?.tipo === 'equipo' ? 'Horas de Uso (Horómetro acumulado)' : 'Kilometraje Recorrido (KM acumulado)'} <span className="required-star">*</span>
+                            </label>
                             <input
                               type="number"
                               min="0"
-                              placeholder="Ej. 120500"
+                              step="any"
+                              placeholder={selectedVehiculo?.tipo === 'equipo' ? 'Ej. 4500.5' : 'Ej. 120500'}
                               value={currentKilometrajeVal}
                               onChange={(e) => setCurrentKilometrajeVal(Number(e.target.value))}
                               required
@@ -3035,12 +4035,15 @@ export default function App() {
                         </div>
                         <div className="modal-footer">
                           <button type="button" className="btn-secondary" onClick={() => setShowKilometrajeInputModal(false)}>Cancelar</button>
-                          <button type="submit" className="btn-primary">Guardar KM</button>
+                          <button type="submit" className="btn-primary">
+                            {selectedVehiculo?.tipo === 'equipo' ? 'Guardar Horas' : 'Guardar KM'}
+                          </button>
                         </div>
                       </form>
                     </div>
                   </div>
                 )}
+
 
                 {/* MODAL: GESTIÓN DE MANTENEDORES (CRUD MANTENEDORES) */}
                 {showMantenedoresModal && (
@@ -3117,6 +4120,219 @@ export default function App() {
               </div>
             )}
 
+            {/* VIEW: CHECKLISTS DIARIOS */}
+            {currentView === 'Checklist' && hasAccess('Checklist') && (
+              <div style={{ animation: 'fadeIn 0.3s ease' }}>
+                {dbError && (
+                  <div className="alert-banner error" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span className="alert-icon">⚠️</span>
+                      <span className="alert-desc" style={{ color: 'var(--text-color)', fontWeight: '500' }}>{dbError}</span>
+                    </div>
+                    <button 
+                      onClick={() => setDbError(null)} 
+                      style={{ background: 'none', border: 'none', color: 'var(--text-color)', cursor: 'pointer', fontSize: '18px', fontWeight: 'bold' }}
+                      title="Cerrar"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+                
+                {/* CABECERA DE LA VISTA */}
+                <div className="view-header print-avoid">
+                  <div>
+                    <h2>Checklists Diarios de Camión Tanque</h2>
+                    <p>Cree nuevos checklists de inspección pre-operacional y visualice el registro histórico.</p>
+                  </div>
+                  <button className="btn-primary" onClick={fetchAllChecklists}>
+                    🔄 Actualizar Datos
+                  </button>
+                </div>
+
+                <div className="checklist-split-view">
+                  
+                  {/* COLUMNA IZQUIERDA: CREAR CHECKLIST (CAMIONES) */}
+                  <div className="card" style={{ padding: '20px', background: 'var(--card-bg)', borderRadius: '12px', border: '1px solid var(--card-border)' }}>
+                    <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', fontWeight: '700', color: 'var(--primary-color)' }}>
+                      🚚 Seleccionar Camión Tanque
+                    </h3>
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '15px' }}>
+                      Haga clic en "Iniciar" para comenzar la inspección diaria obligatoria del camión.
+                    </p>
+                    
+                    <div className="trucks-list">
+                      {(() => {
+                        const trucks = vehiculos.filter(v => v.tipo === 'camion').filter(truck => {
+                          if (currentUser?.perfil === 'Administrador') return true;
+                          const asociados = currentUser?.vehiculosAsociados || [];
+                          return asociados.includes(truck.id);
+                        });
+                        
+                        if (trucks.length === 0) {
+                          return (
+                            <div style={{ textTransform: 'none', fontSize: '12.5px', color: 'var(--text-secondary)', padding: '20px', textAlign: 'center' }}>
+                              No hay camiones autorizados o asociados a su cuenta.
+                            </div>
+                          );
+                        }
+
+                        return trucks.map(truck => (
+                          <div key={truck.id} className="truck-item">
+                            <div>
+                              <span style={{ fontWeight: '800', fontSize: '14px', color: 'var(--text-primary)', display: 'block' }}>
+                                {truck.patente}
+                              </span>
+                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                {truck.faena || 'Sin Faena'}
+                              </span>
+                            </div>
+                            <button
+                              className="btn-primary"
+                              style={{ padding: '6px 12px', fontSize: '12.5px', borderRadius: '6px' }}
+                              onClick={() => {
+                                setSelectedVehiculo(truck);
+                                openNewChecklistModal(truck);
+                              }}
+                            >
+                              Iniciar
+                            </button>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* COLUMNA DERECHA: REGISTRO HISTÓRICO */}
+                  <div className="card" style={{ padding: '20px', background: 'var(--card-bg)', borderRadius: '12px', border: '1px solid var(--card-border)', minHeight: '500px' }}>
+                    <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', fontWeight: '700', color: 'var(--primary-color)' }}>
+                      📜 Registro de Inspecciones Diarias
+                    </h3>
+
+                    {/* FILTROS INTERNOS */}
+                    <div className="checklist-filters" style={{ display: 'flex', gap: '15px', marginBottom: '20px', flexWrap: 'wrap' }}>
+                      <div style={{ flex: '2', minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)' }}>Buscar por Conductor o Patente</label>
+                        <input
+                          type="text"
+                          placeholder="Nombre conductor, patente..."
+                          value={filterChecklistSearch}
+                          onChange={(e) => setFilterChecklistSearch(e.target.value)}
+                          style={{
+                            padding: '8px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--input-border)',
+                            fontSize: '13px',
+                            background: 'var(--card-bg)',
+                            color: 'var(--text-primary)'
+                          }}
+                        />
+                      </div>
+                      <div style={{ flex: '1', minWidth: '150px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)' }}>Estado de Cumplimiento</label>
+                        <select
+                          value={filterChecklistEstado}
+                          onChange={(e) => setFilterChecklistEstado(e.target.value)}
+                          style={{
+                            padding: '8px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--input-border)',
+                            fontSize: '13px',
+                            background: 'var(--card-bg)',
+                            color: 'var(--text-primary)'
+                          }}
+                        >
+                          <option value="ALL">Todos los Estados</option>
+                          <option value="APROBADO">Aprobados (Autorizados)</option>
+                          <option value="RECHAZADO">Rechazados (Retenidos)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* TABLA DE CHECKLISTS */}
+                    <div className="table-wrapper">
+                      <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                        <thead>
+                          <tr>
+                            <th>Fecha</th>
+                            <th>Patente</th>
+                            <th>Conductor</th>
+                            <th>Supervisor</th>
+                            <th>Cumplimiento</th>
+                            <th style={{ textAlign: 'center' }}>Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {allChecklistsList
+                            .filter(ch => {
+                              const matchesSearch = 
+                                (ch.conductor || '').toLowerCase().includes(filterChecklistSearch.toLowerCase()) ||
+                                (ch.patenteCamion || '').toLowerCase().includes(filterChecklistSearch.toLowerCase()) ||
+                                (ch.supervisorCargo || '').toLowerCase().includes(filterChecklistSearch.toLowerCase());
+                              const matchesEstado = 
+                                filterChecklistEstado === 'ALL' || 
+                                ch.estadoCumplimiento === filterChecklistEstado;
+                              return matchesSearch && matchesEstado;
+                            })
+                            .map((ch) => (
+                              <tr key={ch.id} style={{ borderBottom: '1px solid var(--card-border)' }}>
+                                <td style={{ whiteSpace: 'nowrap' }}>
+                                  {new Date(ch.fecha).toLocaleDateString('es-CL')} {new Date(ch.fecha).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+                                </td>
+                                <td style={{ fontWeight: 'bold' }}>{ch.patenteCamion}</td>
+                                <td>{ch.conductor}</td>
+                                <td>{ch.supervisorCargo || '-'}</td>
+                                <td>
+                                  <span 
+                                    style={{
+                                      padding: '4px 8px',
+                                      borderRadius: '6px',
+                                      fontSize: '11px',
+                                      fontWeight: '700',
+                                      background: ch.estadoCumplimiento === 'APROBADO' ? 'var(--success-bg)' : 'var(--error-bg)',
+                                      color: ch.estadoCumplimiento === 'APROBADO' ? 'var(--success-green)' : 'var(--error-red)',
+                                      border: `1px solid ${ch.estadoCumplimiento === 'APROBADO' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`
+                                    }}
+                                  >
+                                    {ch.estadoCumplimiento === 'APROBADO' ? 'APROBADO' : 'RECHAZADO'}
+                                  </span>
+                                </td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <button
+                                    className="btn-secondary"
+                                    style={{ padding: '4px 8px', fontSize: '12px' }}
+                                    onClick={() => setSelectedChecklistForView(ch)}
+                                  >
+                                    Ver Reporte
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          }
+                          {allChecklistsList.filter(ch => {
+                            const matchesSearch = 
+                              (ch.conductor || '').toLowerCase().includes(filterChecklistSearch.toLowerCase()) ||
+                              (ch.patenteCamion || '').toLowerCase().includes(filterChecklistSearch.toLowerCase()) ||
+                              (ch.supervisorCargo || '').toLowerCase().includes(filterChecklistSearch.toLowerCase());
+                            const matchesEstado = 
+                              filterChecklistEstado === 'ALL' || 
+                              ch.estadoCumplimiento === filterChecklistEstado;
+                            return matchesSearch && matchesEstado;
+                          }).length === 0 && (
+                            <tr>
+                              <td colSpan={6} style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)' }}>
+                                No se encontraron registros de checklist.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* VIEW 2: NUEVO FORMULARIO ART WIZARD */}
             {currentView === 'Formulario' && hasAccess('Formulario') && (
               <div>
@@ -3171,21 +4387,37 @@ export default function App() {
                         <div className="form-grid-3">
                           <div className="form-field">
                             <label>Supervisor que Asigna <span className="required-star">*</span></label>
-                            <input type="text" placeholder="Ej. Ricardo Alarcón" value={paso1.supervisor_asigna} onChange={(e) => setPaso1({ ...paso1, supervisor_asigna: e.target.value })} required />
+                            <select
+                              value={paso1.supervisor_asigna}
+                              onChange={(e) => setPaso1({ ...paso1, supervisor_asigna: e.target.value })}
+                              required
+                            >
+                              <option value="">-- Seleccionar Supervisor --</option>
+                              {mantenedores.filter(m => m.categoria === 'supervisor').map(m => (
+                                <option key={m.id} value={m.valor}>{m.valor}</option>
+                              ))}
+                            </select>
                           </div>
                           <div className="form-field">
                             <label>Empresa ejecutora <span className="required-star">*</span></label>
-                            <input type="text" value={paso1.empresa} onChange={(e) => setPaso1({ ...paso1, empresa: e.target.value })} required />
+                            <select
+                              value={paso1.empresa}
+                              onChange={(e) => setPaso1({ ...paso1, empresa: e.target.value })}
+                              required
+                            >
+                              <option value="Mies - Copec">Mies - Copec</option>
+                              <option value="MIES S.A.">MIES S.A.</option>
+                            </select>
                           </div>
                           <div className="form-field">
                             <label>Gerencia <span className="required-star">*</span></label>
-                            <input type="text" placeholder="Ej. Minería Norte" value={paso1.gerencia} onChange={(e) => setPaso1({ ...paso1, gerencia: e.target.value })} required />
+                            <input type="text" placeholder="Ej. Gser" value={paso1.gerencia} onChange={(e) => setPaso1({ ...paso1, gerencia: e.target.value })} required />
                           </div>
                         </div>
                         <div className="form-grid-3">
                           <div className="form-field">
                             <label>Superintendencia / Dirección</label>
-                            <input type="text" placeholder="Ej. Operaciones Chancado" value={paso1.superintendencia_direccion} onChange={(e) => setPaso1({ ...paso1, superintendencia_direccion: e.target.value })} />
+                            <input type="text" placeholder="Ej. logística" value={paso1.superintendencia_direccion} onChange={(e) => setPaso1({ ...paso1, superintendencia_direccion: e.target.value })} />
                           </div>
                           <div className="form-field">
                             <label>Fecha <span className="required-star">*</span></label>
@@ -3203,12 +4435,54 @@ export default function App() {
                           </div>
                           <div className="form-field">
                             <label>Lugar Faena <span className="required-star">*</span></label>
-                            <input type="text" placeholder="Ej. Domo del Stockpile 02" value={paso1.lugar_especifico} onChange={(e) => setPaso1({ ...paso1, lugar_especifico: e.target.value })} required />
+                            <select
+                              value={paso1.lugar_especifico}
+                              onChange={(e) => setPaso1({ ...paso1, lugar_especifico: e.target.value })}
+                              required
+                            >
+                              <option value="">-- Seleccionar Lugar --</option>
+                              {mantenedores.filter(m => m.categoria === 'lugar_faena').map(m => (
+                                <option key={m.id} value={m.valor}>{m.valor}</option>
+                              ))}
+                            </select>
                           </div>
                         </div>
                         <div className="form-field" style={{ marginTop: '10px' }}>
-                          <label>Detalle de Faena a Realizar <span className="required-star">*</span></label>
-                          <textarea rows={3} placeholder="Describa los alcances del trabajo..." value={paso1.trabajo_realizar} onChange={(e) => setPaso1({ ...paso1, trabajo_realizar: e.target.value })} required />
+                          <label>Trabajo a Realizar <span className="required-star">*</span></label>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <select
+                              value={
+                                mantenedores.some(m => m.categoria === 'trabajo' && m.valor === paso1.trabajo_realizar)
+                                  ? paso1.trabajo_realizar
+                                  : paso1.trabajo_realizar === '' ? '' : 'OTRO'
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === 'OTRO') {
+                                  setPaso1({ ...paso1, trabajo_realizar: '' });
+                                } else {
+                                  setPaso1({ ...paso1, trabajo_realizar: val });
+                                }
+                              }}
+                              required
+                            >
+                              <option value="">-- Seleccionar Trabajo --</option>
+                              {mantenedores.filter(m => m.categoria === 'trabajo').map(m => (
+                                <option key={m.id} value={m.valor}>{m.valor}</option>
+                              ))}
+                              <option value="OTRO">Otro (Ingresar descripción manual)...</option>
+                            </select>
+
+                            {(!mantenedores.some(m => m.categoria === 'trabajo' && m.valor === paso1.trabajo_realizar) || paso1.trabajo_realizar === '') && (
+                              <textarea
+                                rows={3}
+                                placeholder="Describa detalladamente el trabajo a realizar..."
+                                value={paso1.trabajo_realizar}
+                                onChange={(e) => setPaso1({ ...paso1, trabajo_realizar: e.target.value })}
+                                required
+                              />
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -3231,8 +4505,12 @@ export default function App() {
                         </div>
                         {supervisorCheck.cuenta_con_estandar && (
                           <div className="form-field" style={{ paddingLeft: '20px', marginBottom: '15px' }}>
-                            <label>Indicar nombre: <span className="required-star">*</span></label>
-                            <input type="text" value={supervisorCheck.nombre_estandar} onChange={(e) => setSupervisorCheck({ ...supervisorCheck, nombre_estandar: e.target.value })} required />
+                            <label>Seleccionar Procedimiento/Instructivo: <span className="required-star">*</span></label>
+                            <MultiSelectProcedimientos
+                              selectedString={supervisorCheck.nombre_estandar}
+                              onChange={(val) => setSupervisorCheck({ ...supervisorCheck, nombre_estandar: val })}
+                              mantenedores={mantenedores}
+                            />
                           </div>
                         )}
 
@@ -3286,8 +4564,12 @@ export default function App() {
                         </div>
                         {trabajadorCheck.conoce_estandar && (
                           <div className="form-field" style={{ paddingLeft: '20px', marginBottom: '15px' }}>
-                            <label>Indicar nombre: <span className="required-star">*</span></label>
-                            <input type="text" value={trabajadorCheck.nombre_estandar_trabajador} onChange={(e) => setTrabajadorCheck({ ...trabajadorCheck, nombre_estandar_trabajador: e.target.value })} required />
+                            <label>Seleccionar Procedimiento/Instructivo: <span className="required-star">*</span></label>
+                            <MultiSelectProcedimientos
+                              selectedString={trabajadorCheck.nombre_estandar_trabajador}
+                              onChange={(val) => setTrabajadorCheck({ ...trabajadorCheck, nombre_estandar_trabajador: val })}
+                              mantenedores={mantenedores}
+                            />
                           </div>
                         )}
 
@@ -3397,9 +4679,20 @@ export default function App() {
                                 {supervisorRiesgosCriticos.map((risk, idx) => (
                                   <div key={idx} style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                      <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary-color)' }}>
-                                        Riesgo #{idx + 1}: {risk.nombre || 'Personalizado'}
-                                      </span>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary-color)' }}>
+                                          Riesgo #{idx + 1}: {risk.nombre || 'Personalizado'}
+                                        </span>
+                                        <a
+                                          href="/docs/SIGO-G-012 Rev 002 Controles Críticos Que Salvan Vidas.pdf"
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          style={{ display: 'inline-flex', alignSelf: 'center', textDecoration: 'none', color: 'var(--error-red)' }}
+                                          title="Ver Ayuda Memoria: SIGO-G-012 Controles Críticos"
+                                        >
+                                          <span className="material-symbols-outlined" style={{ fontSize: '18px', fontWeight: 'bold' }}>picture_as_pdf</span>
+                                        </a>
+                                      </div>
                                       <button
                                         type="button"
                                         onClick={() => handleRemoveRisk('supervisor', idx)}
@@ -3437,9 +4730,10 @@ export default function App() {
                                       <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px', fontSize: '12px' }}>
                                         <thead>
                                           <tr style={{ background: '#f1f5f9', color: '#334155' }}>
-                                            <th style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'left', width: '50%' }}>Control / N°</th>
-                                            <th style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center', width: '25%' }}>SÍ</th>
-                                            <th style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center', width: '25%' }}>NO</th>
+                                            <th style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'left', width: '40%' }}>Control / N°</th>
+                                            <th style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center', width: '20%' }}>SÍ</th>
+                                            <th style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center', width: '20%' }}>NO</th>
+                                            <th style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center', width: '20%' }}>N/A</th>
                                           </tr>
                                         </thead>
                                         <tbody>
@@ -3467,19 +4761,27 @@ export default function App() {
                                                 </div>
                                               </td>
                                               <td
-                                                style={{ padding: '6px 8px', border: '1px solid #cbd5e1', textAlign: 'center', cursor: 'pointer', background: row.cumple ? '#e8f5e9' : 'transparent', transition: 'all 0.2s' }}
+                                                style={{ padding: '6px 8px', border: '1px solid #cbd5e1', textAlign: 'center', cursor: 'pointer', background: row.cumple && !row.noAplica ? '#e8f5e9' : 'transparent', transition: 'all 0.2s' }}
                                                 onClick={() => handleRowChange('supervisor', idx, rowIdx, 'cumple', true)}
                                               >
-                                                <span style={{ fontSize: '12px', fontWeight: 'bold', color: row.cumple ? '#2e7d32' : '#94a3b8' }}>
-                                                  {row.cumple ? '✓ SI' : 'SI'}
+                                                <span style={{ fontSize: '12px', fontWeight: 'bold', color: row.cumple && !row.noAplica ? '#2e7d32' : '#94a3b8' }}>
+                                                  {row.cumple && !row.noAplica ? '✓ SI' : 'SI'}
                                                 </span>
                                               </td>
                                               <td
-                                                style={{ padding: '6px 8px', border: '1px solid #cbd5e1', textAlign: 'center', cursor: 'pointer', background: !row.cumple ? '#ffebee' : 'transparent', transition: 'all 0.2s' }}
+                                                style={{ padding: '6px 8px', border: '1px solid #cbd5e1', textAlign: 'center', cursor: 'pointer', background: !row.cumple && !row.noAplica ? '#ffebee' : 'transparent', transition: 'all 0.2s' }}
                                                 onClick={() => handleRowChange('supervisor', idx, rowIdx, 'cumple', false)}
                                               >
-                                                <span style={{ fontSize: '12px', fontWeight: 'bold', color: !row.cumple ? '#c62828' : '#94a3b8' }}>
-                                                  {!row.cumple ? '✗ NO' : 'NO'}
+                                                <span style={{ fontSize: '12px', fontWeight: 'bold', color: !row.cumple && !row.noAplica ? '#c62828' : '#94a3b8' }}>
+                                                  {!row.cumple && !row.noAplica ? '✗ NO' : 'NO'}
+                                                </span>
+                                              </td>
+                                              <td
+                                                style={{ padding: '6px 8px', border: '1px solid #cbd5e1', textAlign: 'center', cursor: 'pointer', background: row.noAplica ? '#e0f7fa' : 'transparent', transition: 'all 0.2s' }}
+                                                onClick={() => handleRowChange('supervisor', idx, rowIdx, 'noAplica', true)}
+                                              >
+                                                <span style={{ fontSize: '12px', fontWeight: 'bold', color: row.noAplica ? '#006064' : '#94a3b8' }}>
+                                                  {row.noAplica ? '✓ N/A' : 'N/A'}
                                                 </span>
                                               </td>
                                             </tr>
@@ -3547,9 +4849,20 @@ export default function App() {
                                 {trabajadorRiesgosCriticos.map((risk, idx) => (
                                   <div key={idx} style={{ background: '#ffffff', border: '1px solid #e9d5ff', borderRadius: '10px', padding: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                      <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--accent-purple)' }}>
-                                        Riesgo #{idx + 1}: {risk.nombre || 'Personalizado'}
-                                      </span>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--accent-purple)' }}>
+                                          Riesgo #{idx + 1}: {risk.nombre || 'Personalizado'}
+                                        </span>
+                                        <a
+                                          href="/docs/SIGO-G-012 Rev 002 Controles Críticos Que Salvan Vidas.pdf"
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          style={{ display: 'inline-flex', alignSelf: 'center', textDecoration: 'none', color: 'var(--error-red)' }}
+                                          title="Ver Ayuda Memoria: SIGO-G-012 Controles Críticos"
+                                        >
+                                          <span className="material-symbols-outlined" style={{ fontSize: '18px', fontWeight: 'bold' }}>picture_as_pdf</span>
+                                        </a>
+                                      </div>
                                       <button
                                         type="button"
                                         onClick={() => handleRemoveRisk('trabajador', idx)}
@@ -3587,9 +4900,10 @@ export default function App() {
                                       <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px', fontSize: '12px' }}>
                                         <thead>
                                           <tr style={{ background: '#faf5ff', color: '#5b21b6' }}>
-                                            <th style={{ padding: '8px', border: '1px solid #e9d5ff', textAlign: 'left', width: '50%' }}>Control / N°</th>
-                                            <th style={{ padding: '8px', border: '1px solid #e9d5ff', textAlign: 'center', width: '25%' }}>SÍ</th>
-                                            <th style={{ padding: '8px', border: '1px solid #e9d5ff', textAlign: 'center', width: '25%' }}>NO</th>
+                                            <th style={{ padding: '8px', border: '1px solid #e9d5ff', textAlign: 'left', width: '40%' }}>Control / N°</th>
+                                            <th style={{ padding: '8px', border: '1px solid #e9d5ff', textAlign: 'center', width: '20%' }}>SÍ</th>
+                                            <th style={{ padding: '8px', border: '1px solid #e9d5ff', textAlign: 'center', width: '20%' }}>NO</th>
+                                            <th style={{ padding: '8px', border: '1px solid #e9d5ff', textAlign: 'center', width: '20%' }}>N/A</th>
                                           </tr>
                                         </thead>
                                         <tbody>
@@ -3617,19 +4931,27 @@ export default function App() {
                                                 </div>
                                               </td>
                                               <td
-                                                style={{ padding: '6px 8px', border: '1px solid #e9d5ff', textAlign: 'center', cursor: 'pointer', background: row.cumple ? '#e8f5e9' : 'transparent', transition: 'all 0.2s' }}
+                                                style={{ padding: '6px 8px', border: '1px solid #e9d5ff', textAlign: 'center', cursor: 'pointer', background: row.cumple && !row.noAplica ? '#e8f5e9' : 'transparent', transition: 'all 0.2s' }}
                                                 onClick={() => handleRowChange('trabajador', idx, rowIdx, 'cumple', true)}
                                               >
-                                                <span style={{ fontSize: '12px', fontWeight: 'bold', color: row.cumple ? '#2e7d32' : '#94a3b8' }}>
-                                                  {row.cumple ? '✓ SI' : 'SI'}
+                                                <span style={{ fontSize: '12px', fontWeight: 'bold', color: row.cumple && !row.noAplica ? '#2e7d32' : '#94a3b8' }}>
+                                                  {row.cumple && !row.noAplica ? '✓ SI' : 'SI'}
                                                 </span>
                                               </td>
                                               <td
-                                                style={{ padding: '6px 8px', border: '1px solid #e9d5ff', textAlign: 'center', cursor: 'pointer', background: !row.cumple ? '#ffebee' : 'transparent', transition: 'all 0.2s' }}
+                                                style={{ padding: '6px 8px', border: '1px solid #e9d5ff', textAlign: 'center', cursor: 'pointer', background: !row.cumple && !row.noAplica ? '#ffebee' : 'transparent', transition: 'all 0.2s' }}
                                                 onClick={() => handleRowChange('trabajador', idx, rowIdx, 'cumple', false)}
                                               >
-                                                <span style={{ fontSize: '12px', fontWeight: 'bold', color: !row.cumple ? '#c62828' : '#94a3b8' }}>
-                                                  {!row.cumple ? '✗ NO' : 'NO'}
+                                                <span style={{ fontSize: '12px', fontWeight: 'bold', color: !row.cumple && !row.noAplica ? '#c62828' : '#94a3b8' }}>
+                                                  {!row.cumple && !row.noAplica ? '✗ NO' : 'NO'}
+                                                </span>
+                                              </td>
+                                              <td
+                                                style={{ padding: '6px 8px', border: '1px solid #e9d5ff', textAlign: 'center', cursor: 'pointer', background: row.noAplica ? '#e0f7fa' : 'transparent', transition: 'all 0.2s' }}
+                                                onClick={() => handleRowChange('trabajador', idx, rowIdx, 'noAplica', true)}
+                                              >
+                                                <span style={{ fontSize: '12px', fontWeight: 'bold', color: row.noAplica ? '#006064' : '#94a3b8' }}>
+                                                  {row.noAplica ? '✓ N/A' : 'N/A'}
                                                 </span>
                                               </td>
                                             </tr>
@@ -3653,6 +4975,66 @@ export default function App() {
                         <div className="step-header">
                           <h2>Paso 3: Identificación de Riesgos Específicos Localizados</h2>
                           <p>Agregue otros peligros no contemplados en las preguntas transversales.</p>
+                        </div>
+
+                        {/* Chips interactivos de riesgos predefinidos */}
+                        <div style={{ marginBottom: '20px', background: '#faf5ff', padding: '15px', borderRadius: '12px', border: '1px solid #e9d5ff' }}>
+                          <span style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#6d28d9', marginBottom: '8px' }}>
+                            💡 Riesgos Predefinidos Rápidos (Haga clic para agregar):
+                          </span>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                            {(() => {
+                              const DEFAULT_PREDEFINED_RIESGOS = [
+                                { riesgo: 'No realizar ART', medida_control: 'Siempre realizar ART en el lugar de trabajo' },
+                                { riesgo: 'No uso de EPP', medida_control: 'Usar EPP en buen estado y adecuado al trabajo a realizar' },
+                                { riesgo: 'Caída mismo nivel', medida_control: 'Caminar con cuidado atento a las condiciones del terreno' },
+                                { riesgo: 'Radiación UV', medida_control: 'Usar bloqueador solar' }
+                              ];
+                              const dbRiesgos = mantenedores
+                                .filter(m => m.categoria === 'riesgo_localizado')
+                                .map(m => {
+                                  try {
+                                    return JSON.parse(m.valor);
+                                  } catch (e) {
+                                    return null;
+                                  }
+                                })
+                                .filter(Boolean);
+                              const list = dbRiesgos.length > 0 ? dbRiesgos : DEFAULT_PREDEFINED_RIESGOS;
+                              return list.map((item: any, idx: number) => {
+                                const isAlreadySelected = paso3.some(p => p.riesgo === item.riesgo);
+                                return (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => handleAddPredefinedRiesgo(item.riesgo, item.medida_control)}
+                                    disabled={isAlreadySelected}
+                                    style={{
+                                      padding: '6px 12px',
+                                      fontSize: '12px',
+                                      borderRadius: '20px',
+                                      border: isAlreadySelected ? '1px solid #cbd5e1' : '1px solid #d8b4fe',
+                                      background: isAlreadySelected ? '#f1f5f9' : '#ffffff',
+                                      color: isAlreadySelected ? '#94a3b8' : '#6d28d9',
+                                      cursor: isAlreadySelected ? 'not-allowed' : 'pointer',
+                                      fontWeight: '600',
+                                      transition: 'all 0.2s ease',
+                                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                                      opacity: isAlreadySelected ? 0.6 : 1
+                                    }}
+                                    onMouseOver={(e) => {
+                                      if (!isAlreadySelected) e.currentTarget.style.background = '#f3e8ff';
+                                    }}
+                                    onMouseOut={(e) => {
+                                      if (!isAlreadySelected) e.currentTarget.style.background = '#ffffff';
+                                    }}
+                                  >
+                                    {isAlreadySelected ? '✓' : '⚡'} {item.riesgo}
+                                  </button>
+                                );
+                              });
+                            })()}
+                          </div>
                         </div>
 
                         <div className="list-container">
@@ -3998,6 +5380,97 @@ export default function App() {
               </div>
             )}
 
+            {/* VIEW 3.5: ART POR FINALIZAR */}
+            {currentView === 'ArtPorFinalizar' && hasAccess('ArtPorFinalizar') && (
+              <div>
+                <div className="view-header">
+                  <div>
+                    <h2>Bandeja de ART por Finalizar</h2>
+                    <p>Revise y cierre los Análisis de Riesgo del Trabajo aprobados que continúan en proceso.</p>
+                  </div>
+                  <button className="btn-primary" style={{ padding: '8px 16px' }} onClick={fetchARTs}>
+                    🔄 Sincronizar Bandeja
+                  </button>
+                </div>
+
+                <div className="table-wrapper">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Seguimiento</th>
+                        <th>Fecha Ingreso</th>
+                        <th>Empresa</th>
+                        <th>Supervisor Asigna</th>
+                        <th>Lugar de Faena</th>
+                        <th>Trabajo a Realizar</th>
+                        <th>Estado Cierre</th>
+                        <th style={{ textAlign: 'center' }}>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const pendingList = artList.filter(art => {
+                          const estFin = art.estadoFinalizacion || 'EN_PROCESO';
+                          return estFin === 'EN_PROCESO' && art.estado === 'APPROVED_WORK_AUTHORIZED';
+                        });
+
+                        if (pendingList.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                                  <span className="material-symbols-outlined" style={{ fontSize: '48px', color: '#94a3b8' }}>task_alt</span>
+                                  <span style={{ fontWeight: '600' }}>No hay formularios ART pendientes de finalización</span>
+                                  <span style={{ fontSize: '12px' }}>Todos los trabajos aprobados han sido debidamente cerrados.</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        return pendingList.map((art) => (
+                          <tr key={art.id}>
+                            <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary-color)' }}>{art.codigoSeguimiento}</td>
+                            <td>{new Date(art.createdAt).toLocaleString()}</td>
+                            <td className="font-semibold">{art.paso1Planificacion.empresa}</td>
+                            <td>{art.paso1Planificacion.supervisor_asigna}</td>
+                            <td>{art.paso1Planificacion.lugar_especifico || 'No especificado'}</td>
+                            <td>{art.paso1Planificacion.trabajo_realizar}</td>
+                            <td>
+                              <span className="table-badge rate" style={{ background: 'rgba(245, 158, 11, 0.15)', color: 'var(--warning-amber)', border: 'none' }}>
+                                EN PROCESO
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                <button
+                                  type="button"
+                                  className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                                  onClick={() => handleFinalizarART(art.id)}
+                                  disabled={currentUser?.perfil !== 'Supervisor' && currentUser?.perfil !== 'Administrador'}
+                                  title={currentUser?.perfil !== 'Supervisor' && currentUser?.perfil !== 'Administrador' ? 'Solo Supervisor o Administrador puede finalizar' : 'Finalizar y cerrar este formulario ART'}
+                                >
+                                  🔐 Finalizar ART
+                                </button>
+                                <button
+                                  type="button"
+                                  className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all"
+                                  onClick={() => setSelectedArtForModal(art)}
+                                  title="Ver ART Completo"
+                                >
+                                  👁️ Ver Detalle
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ));
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {/* VIEW 4: ADMINISTRACIÓN (TABS DE USUARIOS Y PERFILES) */}
             {currentView === 'Administración' && (hasAccess('Usuarios') || hasAccess('Perfiles')) && (
               <div>
@@ -4082,63 +5555,262 @@ export default function App() {
                     {/* MODAL WINDOW FOR COLABORADORES */}
                     {showUserModal && (
                       <div className="modal-overlay">
-                        <div className="modal-container">
+                        <div className="modal-container large">
                           <div className="modal-header">
                             <h3>{editModeUser ? 'Editar Colaborador' : 'Agregar Nuevo Colaborador'}</h3>
                             <button className="action-icon-btn" onClick={() => setShowUserModal(false)} style={{ fontSize: '20px' }}>×</button>
                           </div>
                           <div className="modal-body">
-                            <div className="form-field">
-                              <label>Nombre Completo <span className="required-star">*</span></label>
-                              <input type="text" placeholder="Ej. Ricardo Alarcón" value={formUserNombre} onChange={(e) => setFormUserNombre(e.target.value)} required />
-                            </div>
-                            <div className="form-field">
-                              <label>Nombre de Usuario <span className="required-star">*</span></label>
-                              <input type="text" placeholder="Ej. ralarcon" value={formUserUsuario} onChange={(e) => setFormUserUsuario(e.target.value)} required />
-                            </div>
-                            <div className="form-field">
-                              <label>Correo Electrónico <span className="required-star">*</span></label>
-                              <input type="text" placeholder="ejemplo@mies.cl" value={formUserEmail} onChange={(e) => setFormUserEmail(e.target.value)} required />
-                            </div>
-                            <div className="form-field">
-                              <label>Cargo</label>
-                              <input type="text" placeholder="Ej. Supervisor de Terreno" value={formUserCargo} onChange={(e) => setFormUserCargo(e.target.value)} />
-                            </div>
-                            <div className="form-field">
-                              <label>Perfil Asignado <span className="required-star">*</span></label>
-                              <select value={formUserPerfil} onChange={(e) => setFormUserPerfil(e.target.value as any)}>
-                                <option value="Administrador">Administrador</option>
-                                <option value="Supervisor">Supervisor</option>
-                                <option value="Operador">Operador</option>
-                              </select>
-                            </div>
-                            <div className="form-field">
-                              <label>Foto de Perfil (Subir imagen)</label>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px' }}>
-                                <img src={formUserFoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150'} alt="Vista previa" className="avatar-circle" style={{ width: '50px', height: '50px', objectFit: 'cover', border: '2px solid var(--secondary-color)' }} />
-                                <div style={{ flex: 1 }}>
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    key={showUserModal ? 'open' : 'closed'}
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0];
-                                      if (file) {
-                                        const reader = new FileReader();
-                                        reader.onloadend = () => {
-                                          if (typeof reader.result === 'string') {
-                                            setFormUserFoto(reader.result);
-                                          }
-                                        };
-                                        reader.readAsDataURL(file);
-                                      }
-                                    }}
-                                    style={{ display: 'none' }}
-                                    id="user-photo-upload"
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }} className="form-grid-2">
+                              {/* Left Column: Basic Information */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                <div className="form-field">
+                                  <label>Nombre Completo <span className="required-star">*</span></label>
+                                  <input type="text" placeholder="Ej. Ricardo Alarcón" value={formUserNombre} onChange={(e) => setFormUserNombre(e.target.value)} required />
+                                </div>
+                                <div className="form-field">
+                                  <label>Nombre de Usuario <span className="required-star">*</span></label>
+                                  <input type="text" placeholder="Ej. ralarcon" value={formUserUsuario} onChange={(e) => setFormUserUsuario(e.target.value)} required />
+                                </div>
+                                <div className="form-field">
+                                  <label>Correo Electrónico <span className="required-star">*</span></label>
+                                  <input type="text" placeholder="ejemplo@mies.cl" value={formUserEmail} onChange={(e) => setFormUserEmail(e.target.value)} required />
+                                </div>
+                                <div className="form-field">
+                                  <label>Cargo</label>
+                                  <input type="text" placeholder="Ej. Supervisor de Terreno" value={formUserCargo} onChange={(e) => setFormUserCargo(e.target.value)} />
+                                </div>
+                                <div className="form-field">
+                                  <label>Perfil Asignado <span className="required-star">*</span></label>
+                                  <select value={formUserPerfil} onChange={(e) => {
+                                    const newPerfil = e.target.value as any;
+                                    setFormUserPerfil(newPerfil);
+                                    const defaultScreens = profilePermissions.find(p => p.rol === newPerfil)?.screens || {};
+                                    setFormUserScreens({ ...defaultScreens });
+                                  }}>
+                                    <option value="Administrador">Administrador</option>
+                                    <option value="Supervisor">Supervisor</option>
+                                    <option value="Operador">Operador</option>
+                                  </select>
+                                </div>
+                                <div className="form-field">
+                                  <label>Contraseña de Acceso <span className="required-star">*</span></label>
+                                  <input 
+                                    type="text" 
+                                    placeholder="Ej. admin123" 
+                                    value={formUserPassword} 
+                                    onChange={(e) => setFormUserPassword(e.target.value)} 
+                                    required 
                                   />
-                                  <label htmlFor="user-photo-upload" className="btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0 }}>
-                                    📷 Seleccionar Archivo
-                                  </label>
+                                </div>
+                              </div>
+
+                              {/* Right Column: Permissions & Vehicles */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                <div className="form-field">
+                                  <label>Foto de Perfil (Subir imagen)</label>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px' }}>
+                                    <img src={formUserFoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150'} alt="Vista previa" className="avatar-circle" style={{ width: '50px', height: '50px', objectFit: 'cover', border: '2px solid var(--secondary-color)' }} />
+                                    <div style={{ flex: 1 }}>
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        key={showUserModal ? 'open' : 'closed'}
+                                        onChange={(e) => {
+                                          const file = e.target.files?.[0];
+                                          if (file) {
+                                            const reader = new FileReader();
+                                            reader.onloadend = () => {
+                                              if (typeof reader.result === 'string') {
+                                                setFormUserFoto(reader.result);
+                                              }
+                                            };
+                                            reader.readAsDataURL(file);
+                                          }
+                                        }}
+                                        style={{ display: 'none' }}
+                                        id="user-photo-upload"
+                                      />
+                                      <label htmlFor="user-photo-upload" className="btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0 }}>
+                                        📷 Seleccionar Archivo
+                                      </label>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="form-field">
+                                  <label>Pantallas Habilitadas</label>
+                                  {formUserPerfil === 'Administrador' ? (
+                                    <div style={{
+                                      padding: '10px 12px',
+                                      borderRadius: '8px',
+                                      background: 'rgba(16, 185, 129, 0.1)',
+                                      border: '1px solid rgba(16, 185, 129, 0.2)',
+                                      color: 'var(--success-green)',
+                                      fontSize: '12px',
+                                      fontWeight: '600'
+                                    }}>
+                                      🛡️ Los administradores tienen acceso completo a todas las pantallas.
+                                    </div>
+                                  ) : (
+                                    <div style={{
+                                      maxHeight: '130px',
+                                      overflowY: 'auto',
+                                      border: '1px solid #cbd5e1',
+                                      borderRadius: '8px',
+                                      padding: '10px',
+                                      background: '#f8fafc',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '8px',
+                                      marginTop: '4px'
+                                    }}>
+                                      {[
+                                        { key: 'Dashboard', label: '📊 Panel de Control (Dashboard)' },
+                                        { key: 'Formulario', label: '📝 Nuevo Formulario ART' },
+                                        { key: 'Historial', label: '🗂️ Historial ART' },
+                                        { key: 'Checklist', label: '📋 Checklists Diarios' },
+                                        { key: 'RevisionTecnica', label: '🚚 Gestión de Vehículos' },
+                                        { key: 'ArtPorFinalizar', label: '⏳ ART por Finalizar' },
+                                        { key: 'Mantenedores', label: '⚙️ Mantenedores' },
+                                        { key: 'Usuarios', label: '👥 Administración' },
+                                        { key: 'Perfiles', label: '🛡️ Matriz de Perfiles' }
+                                      ].map(screen => {
+                                        const isChecked = !!formUserScreens[screen.key as keyof ProfilePermissions['screens']];
+                                        return (
+                                          <label key={screen.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '500', color: 'var(--text-main)' }}>
+                                            <input
+                                              type="checkbox"
+                                              checked={isChecked}
+                                              onChange={(e) => {
+                                                setFormUserScreens({
+                                                  ...formUserScreens,
+                                                  [screen.key]: e.target.checked
+                                                });
+                                              }}
+                                              style={{ cursor: 'pointer' }}
+                                            />
+                                            <span>{screen.label}</span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="form-field">
+                                  <label>Vehículos / Equipos Asociados</label>
+                                  <div style={{
+                                    maxHeight: '200px',
+                                    overflowY: 'auto',
+                                    border: '1px solid #cbd5e1',
+                                    borderRadius: '8px',
+                                    padding: '12px',
+                                    background: '#f8fafc',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '12px',
+                                    marginTop: '4px'
+                                  }}>
+                                    {/* CAMIONES */}
+                                    {vehiculos.filter(v => v.tipo === 'camion').length > 0 && (
+                                      <div>
+                                        <div style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--primary-color)', borderBottom: '1px solid #cbd5e1', paddingBottom: '3px', marginBottom: '6px' }}>
+                                          🚚 Camiones
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '4px' }}>
+                                          {vehiculos.filter(v => v.tipo === 'camion').map(v => {
+                                            const isChecked = formUserVehiculos.includes(v.id);
+                                            return (
+                                              <label key={v.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '500', color: 'var(--text-main)' }}>
+                                                <input
+                                                  type="checkbox"
+                                                  checked={isChecked}
+                                                  onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                      setFormUserVehiculos([...formUserVehiculos, v.id]);
+                                                    } else {
+                                                      setFormUserVehiculos(formUserVehiculos.filter(id => id !== v.id));
+                                                    }
+                                                  }}
+                                                  style={{ cursor: 'pointer' }}
+                                                />
+                                                <span><strong>{v.patente}</strong> - {v.faena}</span>
+                                              </label>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* CAMIONETAS */}
+                                    {vehiculos.filter(v => v.tipo === 'camioneta').length > 0 && (
+                                      <div>
+                                        <div style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', color: '#d97706', borderBottom: '1px solid #cbd5e1', paddingBottom: '3px', marginBottom: '6px' }}>
+                                          🚗 Camionetas
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '4px' }}>
+                                          {vehiculos.filter(v => v.tipo === 'camioneta').map(v => {
+                                            const isChecked = formUserVehiculos.includes(v.id);
+                                            return (
+                                              <label key={v.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '500', color: 'var(--text-main)' }}>
+                                                <input
+                                                  type="checkbox"
+                                                  checked={isChecked}
+                                                  onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                      setFormUserVehiculos([...formUserVehiculos, v.id]);
+                                                    } else {
+                                                      setFormUserVehiculos(formUserVehiculos.filter(id => id !== v.id));
+                                                    }
+                                                  }}
+                                                  style={{ cursor: 'pointer' }}
+                                                />
+                                                <span><strong>{v.patente}</strong> - {v.faena}</span>
+                                              </label>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* EQUIPOS CERTIFICADOS */}
+                                    {vehiculos.filter(v => v.tipo !== 'camion' && v.tipo !== 'camioneta').length > 0 && (
+                                      <div>
+                                        <div style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', color: '#4b5563', borderBottom: '1px solid #cbd5e1', paddingBottom: '3px', marginBottom: '6px' }}>
+                                          ⚙️ Equipos Certificados
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '4px' }}>
+                                          {vehiculos.filter(v => v.tipo !== 'camion' && v.tipo !== 'camioneta').map(v => {
+                                            const isChecked = formUserVehiculos.includes(v.id);
+                                            return (
+                                              <label key={v.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '500', color: 'var(--text-main)' }}>
+                                                <input
+                                                  type="checkbox"
+                                                  checked={isChecked}
+                                                  onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                      setFormUserVehiculos([...formUserVehiculos, v.id]);
+                                                    } else {
+                                                      setFormUserVehiculos(formUserVehiculos.filter(id => id !== v.id));
+                                                    }
+                                                  }}
+                                                  style={{ cursor: 'pointer' }}
+                                                />
+                                                <span><strong>{v.patente}</strong> - {v.faena}</span>
+                                              </label>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {vehiculos.length === 0 && (
+                                      <span style={{ fontSize: '11px', color: '#64748b', fontStyle: 'italic' }}>
+                                        No hay vehículos registrados en el sistema.
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -4168,6 +5840,7 @@ export default function App() {
                             <th style={{ textAlign: 'center' }}>📊 Panel de Control</th>
                             <th style={{ textAlign: 'center' }}>📝 Nuevo Formulario ART</th>
                             <th style={{ textAlign: 'center' }}>🗂️ Historial completo</th>
+                            <th style={{ textAlign: 'center' }}>📋 Checklists Diarios</th>
                             <th style={{ textAlign: 'center' }}>🚚 Revisión Técnica</th>
                             <th style={{ textAlign: 'center' }}>👥 Administración (Usuarios)</th>
                             <th style={{ textAlign: 'center' }}>🛡️ Permisos (Perfiles)</th>
@@ -4202,7 +5875,15 @@ export default function App() {
                                     type="checkbox"
                                     checked={p.screens.Historial}
                                     onChange={() => handlePermissionToggle(p.rol, 'Historial')}
-                                    disabled={p.rol === 'Operador'}
+                                  />
+                                </label>
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <label className="checkbox-label">
+                                  <input
+                                    type="checkbox"
+                                    checked={p.screens.Checklist}
+                                    onChange={() => handlePermissionToggle(p.rol, 'Checklist')}
                                   />
                                 </label>
                               </td>
@@ -4245,11 +5926,791 @@ export default function App() {
                 )}
               </div>
             )}
+
+            {/* VIEW 5: MANTENEDORES UNIFICADO */}
+            {currentView === 'Mantenedores' && hasAccess('Mantenedores') && (
+              <div>
+                <div className="view-header">
+                  <div>
+                    <h2>Mantenedores de Datos Auxiliares</h2>
+                    <p>Administre y configure los parámetros, procedimientos y riesgos obligatorios utilizados en los formularios.</p>
+                  </div>
+                </div>
+
+                {/* Sub-tabs styling layout */}
+                <div className="admin-tabs" style={{ marginBottom: '20px' }}>
+                  <button type="button" className={`admin-tab-btn ${mantActiveTab === 'supervisor' ? 'active' : ''}`} onClick={() => setMantActiveTab('supervisor')}>👥 Supervisores</button>
+                  <button type="button" className={`admin-tab-btn ${mantActiveTab === 'trabajo' ? 'active' : ''}`} onClick={() => setMantActiveTab('trabajo')}>💼 Trabajos</button>
+                  <button type="button" className={`admin-tab-btn ${mantActiveTab === 'lugar_faena' ? 'active' : ''}`} onClick={() => setMantActiveTab('lugar_faena')}>📍 Lugares de Faena</button>
+                  <button type="button" className={`admin-tab-btn ${mantActiveTab === 'procedimiento' ? 'active' : ''}`} onClick={() => setMantActiveTab('procedimiento')}>📄 Procedimientos/Instructivos</button>
+                  <button type="button" className={`admin-tab-btn ${mantActiveTab === 'riesgo_localizado' ? 'active' : ''}`} onClick={() => setMantActiveTab('riesgo_localizado')}>⚠️ Riesgos Predefinidos</button>
+                  <button type="button" className={`admin-tab-btn ${mantActiveTab === 'faena_contras' ? 'active' : ''}`} onClick={() => setMantActiveTab('faena_contras')}>🏢 Faenas & Contratistas</button>
+                </div>
+
+                <div className="form-card" style={{ padding: '25px' }}>
+                  {mantActiveTab === 'supervisor' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '30px' }}>
+                      <div>
+                        <h3 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '15px', color: 'var(--primary-color)' }}>Registrar Nuevo Supervisor</h3>
+                        <div className="form-field">
+                          <label>Nombre del Supervisor <span className="required-star">*</span></label>
+                          <input
+                            type="text"
+                            placeholder="Ej. Juan Pérez"
+                            value={formSupervisorVal}
+                            onChange={(e) => setFormSupervisorVal(e.target.value)}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          style={{ marginTop: '10px', width: '100%' }}
+                          onClick={() => handleAddSimpleMantenedor('supervisor', formSupervisorVal, () => setFormSupervisorVal(''))}
+                        >
+                          Agregar Supervisor
+                        </button>
+                      </div>
+                      <div style={{ borderLeft: '1px solid var(--card-border)', paddingLeft: '35px' }}>
+                        <h3 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '15px', color: 'var(--text-main)' }}>Supervisores Registrados</h3>
+                        <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {mantenedores.filter(m => m.categoria === 'supervisor').map(m => (
+                            <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                              <span style={{ fontWeight: '600', fontSize: '13px' }}>{m.valor}</span>
+                              <button type="button" className="action-icon-btn" onClick={() => handleDeleteMantenedor(m.id)} style={{ color: 'var(--error-red)' }}>🗑️</button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {mantActiveTab === 'trabajo' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '30px' }}>
+                      <div>
+                        <h3 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '15px', color: 'var(--primary-color)' }}>Registrar Trabajo Predefinido</h3>
+                        <div className="form-field">
+                          <label>Trabajo / Faena a Realizar <span className="required-star">*</span></label>
+                          <input
+                            type="text"
+                            placeholder="Ej. Limpieza de estanque de combustible"
+                            value={formTrabajoVal}
+                            onChange={(e) => setFormTrabajoVal(e.target.value)}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          style={{ marginTop: '10px', width: '100%' }}
+                          onClick={() => handleAddSimpleMantenedor('trabajo', formTrabajoVal, () => setFormTrabajoVal(''))}
+                        >
+                          Agregar Trabajo
+                        </button>
+                      </div>
+                      <div style={{ borderLeft: '1px solid var(--card-border)', paddingLeft: '35px' }}>
+                        <h3 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '15px', color: 'var(--text-main)' }}>Trabajos Registrados</h3>
+                        <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {mantenedores.filter(m => m.categoria === 'trabajo').map(m => (
+                            <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                              <span style={{ fontWeight: '600', fontSize: '13px' }}>{m.valor}</span>
+                              <button type="button" className="action-icon-btn" onClick={() => handleDeleteMantenedor(m.id)} style={{ color: 'var(--error-red)' }}>🗑️</button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {mantActiveTab === 'lugar_faena' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '30px' }}>
+                      <div>
+                        <h3 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '15px', color: 'var(--primary-color)' }}>Registrar Lugar de Faena</h3>
+                        <div className="form-field">
+                          <label>Nombre del Lugar <span className="required-star">*</span></label>
+                          <input
+                            type="text"
+                            placeholder="Ej. Huechun, Saladillo, etc."
+                            value={formLugarVal}
+                            onChange={(e) => setFormLugarVal(e.target.value)}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          style={{ marginTop: '10px', width: '100%' }}
+                          onClick={() => handleAddSimpleMantenedor('lugar_faena', formLugarVal, () => setFormLugarVal(''))}
+                        >
+                          Agregar Lugar
+                        </button>
+                      </div>
+                      <div style={{ borderLeft: '1px solid var(--card-border)', paddingLeft: '35px' }}>
+                        <h3 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '15px', color: 'var(--text-main)' }}>Lugares Registrados</h3>
+                        <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {mantenedores.filter(m => m.categoria === 'lugar_faena').map(m => (
+                            <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                              <span style={{ fontWeight: '600', fontSize: '13px' }}>{m.valor}</span>
+                              <button type="button" className="action-icon-btn" onClick={() => handleDeleteMantenedor(m.id)} style={{ color: 'var(--error-red)' }}>🗑️</button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {mantActiveTab === 'procedimiento' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '30px' }}>
+                      <div>
+                        <h3 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '15px', color: 'var(--primary-color)' }}>Subir Procedimiento / Instructivo</h3>
+                        <form onSubmit={handleAddProcedureMantenedor}>
+                          <div className="form-field" style={{ marginBottom: '12px' }}>
+                            <label>Nombre del Procedimiento <span className="required-star">*</span></label>
+                            <input
+                              type="text"
+                              placeholder="Ej. PO-AC-085 Plan de cierre"
+                              value={formProcNombre}
+                              onChange={(e) => setFormProcNombre(e.target.value)}
+                              required
+                            />
+                          </div>
+                          <div className="form-field" style={{ marginBottom: '15px' }}>
+                            <label>Adjuntar Documento PDF <span className="required-star">*</span></label>
+                            <input
+                              type="file"
+                              accept=".pdf"
+                              required
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  setFormProcFileName(file.name);
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => {
+                                    if (typeof reader.result === 'string') {
+                                      const base64 = reader.result.split(',')[1];
+                                      setFormProcFileBase64(base64);
+                                    }
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                            />
+                          </div>
+                          <button
+                            type="submit"
+                            className="btn-primary"
+                            style={{ width: '100%' }}
+                            disabled={procUploadLoading}
+                          >
+                            {procUploadLoading ? 'Subiendo PDF...' : 'Subir y Registrar'}
+                          </button>
+                        </form>
+                      </div>
+                      <div style={{ borderLeft: '1px solid var(--card-border)', paddingLeft: '35px' }}>
+                        <h3 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '15px', color: 'var(--text-main)' }}>Procedimientos Registrados</h3>
+                        <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {(() => {
+                            const list = mantenedores
+                              .filter(m => m.categoria === 'procedimiento')
+                              .map(m => {
+                                try {
+                                  return { id: m.id, ...JSON.parse(m.valor) };
+                                } catch(e) {
+                                  return { id: m.id, nombre: m.valor, url: '' };
+                                }
+                              });
+
+                            return list.map(p => (
+                              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                  <span style={{ fontWeight: '600', fontSize: '13px' }}>{p.nombre}</span>
+                                  {p.url && (
+                                    <a href={p.url.startsWith('http') || p.url.startsWith('/') ? p.url : `/uploads/${p.url}`} target="_blank" rel="noreferrer" style={{ fontSize: '11px', color: 'var(--primary-color)', display: 'inline-flex', alignItems: 'center', gap: '3px', marginTop: '4px', textDecoration: 'none' }}>
+                                      <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>picture_as_pdf</span> Ver PDF
+                                    </a>
+                                  )}
+                                </div>
+                                <button type="button" className="action-icon-btn" onClick={() => handleDeleteMantenedor(p.id)} style={{ color: 'var(--error-red)' }}>🗑️</button>
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {mantActiveTab === 'riesgo_localizado' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '30px' }}>
+                      <div>
+                        <h3 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '15px', color: 'var(--primary-color)' }}>Registrar Riesgo Predefinido</h3>
+                        <div className="form-field" style={{ marginBottom: '12px' }}>
+                          <label>Riesgo Específico <span className="required-star">*</span></label>
+                          <input
+                            type="text"
+                            placeholder="Ej. Caída mismo nivel"
+                            value={formRiesgoVal}
+                            onChange={(e) => setFormRiesgoVal(e.target.value)}
+                          />
+                        </div>
+                        <div className="form-field" style={{ marginBottom: '15px' }}>
+                          <label>Medida Mitigadora / Control <span className="required-star">*</span></label>
+                          <input
+                            type="text"
+                            placeholder="Ej. Caminar con cuidado atento a las condiciones"
+                            value={formMedidaVal}
+                            onChange={(e) => setFormMedidaVal(e.target.value)}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          style={{ width: '100%' }}
+                          onClick={() => handleAddPredefinedRiskMantenedor(formRiesgoVal, formMedidaVal)}
+                        >
+                          Agregar Riesgo
+                        </button>
+                      </div>
+                      <div style={{ borderLeft: '1px solid var(--card-border)', paddingLeft: '35px' }}>
+                        <h3 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '15px', color: 'var(--text-main)' }}>Riesgos Registrados</h3>
+                        <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {(() => {
+                            const list = mantenedores
+                              .filter(m => m.categoria === 'riesgo_localizado')
+                              .map(m => {
+                                try {
+                                  return { id: m.id, ...JSON.parse(m.valor) };
+                                } catch(e) {
+                                  return { id: m.id, riesgo: m.valor, medida_control: '' };
+                                }
+                              });
+
+                            return list.map(r => (
+                              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, marginRight: '10px' }}>
+                                  <span style={{ fontWeight: '700', color: 'var(--accent-purple)' }}>{r.riesgo}</span>
+                                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{r.medida_control}</span>
+                                </div>
+                                <button type="button" className="action-icon-btn" onClick={() => handleDeleteMantenedor(r.id)} style={{ color: 'var(--error-red)' }}>🗑️</button>
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {mantActiveTab === 'faena_contras' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '30px' }}>
+                      <div>
+                        <h3 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '15px', color: 'var(--primary-color)' }}>Registrar Faena / Contratista</h3>
+                        <div className="form-field" style={{ marginBottom: '12px' }}>
+                          <label>Tipo de Registro</label>
+                          <select
+                            value={formFaenaContraCat}
+                            onChange={(e) => setFormFaenaContraCat(e.target.value as 'faena' | 'contratista')}
+                          >
+                            <option value="faena">Faena</option>
+                            <option value="contratista">Contratista</option>
+                          </select>
+                        </div>
+                        <div className="form-field" style={{ marginBottom: '15px' }}>
+                          <label>Nombre / Valor <span className="required-star">*</span></label>
+                          <input
+                            type="text"
+                            placeholder="Ej. Codelco Andina"
+                            value={formFaenaContraVal}
+                            onChange={(e) => setFormFaenaContraVal(e.target.value)}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          style={{ width: '100%' }}
+                          onClick={() => handleAddSimpleMantenedor(formFaenaContraCat, formFaenaContraVal, () => setFormFaenaContraVal(''))}
+                        >
+                          Agregar Elemento
+                        </button>
+                      </div>
+                      <div style={{ borderLeft: '1px solid var(--card-border)', paddingLeft: '35px' }}>
+                        <h3 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '15px', color: 'var(--text-main)' }}>Registros Existentes</h3>
+                        <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                          {['faena', 'contratista'].map(cat => {
+                            const list = mantenedores.filter(m => m.categoria === cat);
+                            return (
+                              <div key={cat}>
+                                <h4 style={{ fontSize: '12px', fontWeight: '800', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                                  {cat === 'faena' ? '📍 Faenas' : '🏢 Contratistas'} ({list.length})
+                                </h4>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  {list.map(m => (
+                                    <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}>
+                                      <span style={{ fontWeight: '600' }}>{m.valor}</span>
+                                      <button type="button" className="action-icon-btn" onClick={() => handleDeleteMantenedor(m.id)} style={{ color: 'var(--error-red)', padding: '2px' }}>🗑️</button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </>
         )}
 
       </main>
 
+
+
+                {/* MODAL: REALIZAR CHECKLIST DIARIO (WIZARD DE PASOS) */}
+                {showChecklistModal && (
+                  <div className="modal-overlay" style={{ zIndex: 120, overflowY: 'auto', padding: '20px' }}>
+                    <div className="modal-container large" style={{ animation: 'fadeIn 0.3s ease', maxWidth: '850px', width: '100%' }}>
+                      <div className="modal-header">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span className="material-symbols-outlined" style={{ color: 'var(--primary-color)' }}>assignment_turned_in</span>
+                          <h3 style={{ margin: 0 }}>Check List Diario Camión Tanque</h3>
+                        </div>
+                        <button className="action-icon-btn" onClick={() => setShowChecklistModal(false)} style={{ fontSize: '24px' }}>×</button>
+                      </div>
+
+                      {/* Step Tracker */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '15px 20px', background: '#f8fafc', borderBottom: '1px solid var(--card-border)', gap: '10px', overflowX: 'auto' }}>
+                        {[
+                          { step: 1, label: 'Cabecera' },
+                          { step: 2, label: 'Gen. (1-34)' },
+                          { step: 3, label: 'Mec. & Auto' },
+                          { step: 4, label: 'Equip. (46-62)' },
+                          { step: 5, label: 'Doc. & Camión' },
+                          { step: 6, label: 'Firmas' }
+                        ].map((s) => (
+                          <div 
+                            key={s.step} 
+                            style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: '6px',
+                              fontSize: '12px',
+                              fontWeight: checklistStep === s.step ? '800' : '500',
+                              color: checklistStep === s.step ? 'var(--primary-color)' : checklistStep > s.step ? '#10b981' : '#64748b',
+                              borderBottom: checklistStep === s.step ? '2px solid var(--primary-color)' : 'none',
+                              paddingBottom: '4px',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            <span 
+                              style={{ 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                width: '20px', 
+                                height: '20px', 
+                                borderRadius: '50%', 
+                                background: checklistStep === s.step ? 'var(--primary-color)' : checklistStep > s.step ? '#10b981' : '#cbd5e1', 
+                                color: 'white',
+                                fontSize: '10px',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              {checklistStep > s.step ? '✓' : s.step}
+                            </span>
+                            {s.label}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="modal-body" style={{ maxHeight: 'calc(100vh - 250px)', overflowY: 'auto', padding: '20px' }}>
+                        {/* Step 1: Cabecera */}
+                        {checklistStep === 1 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                            <h4 style={{ margin: 0, color: 'var(--primary-color)', fontSize: '14px', fontWeight: '800' }}>1. Información de Cabecera</h4>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                              <div className="form-field">
+                                <label>Conductor <span className="required-star">*</span></label>
+                                <input type="text" value={checklistForm.conductor} onChange={(e) => setChecklistForm({ ...checklistForm, conductor: e.target.value })} required />
+                              </div>
+                              <div className="form-field">
+                                <label>Patente Camión</label>
+                                <input type="text" value={checklistForm.patenteCamion} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} />
+                              </div>
+                              <div className="form-field">
+                                <label>Turno <span className="required-star">*</span></label>
+                                <select value={checklistForm.turno} onChange={(e) => setChecklistForm({ ...checklistForm, turno: e.target.value })}>
+                                  <option value="A">A</option>
+                                  <option value="B">B</option>
+                                  <option value="C">C</option>
+                                  <option value="Rotativo">Rotativo</option>
+                                </select>
+                              </div>
+                              <div className="form-field">
+                                <label>Numeral de Meter <span className="required-star">*</span></label>
+                                <input type="text" value={checklistForm.numeralMeter} onChange={(e) => setChecklistForm({ ...checklistForm, numeralMeter: e.target.value })} required />
+                              </div>
+                              <div className="form-field">
+                                <label>Supervisor a Cargo <span className="required-star">*</span></label>
+                                <select 
+                                  value={checklistForm.supervisorCargo} 
+                                  onChange={(e) => setChecklistForm({ ...checklistForm, supervisorCargo: e.target.value })}
+                                  required
+                                >
+                                  <option value="">-- Seleccione Supervisor --</option>
+                                  {mantenedores.filter(m => m.categoria === 'supervisor').map(m => (
+                                    <option key={m.id} value={m.valor}>{m.valor}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="form-field">
+                                <label>Área Operativa <span className="required-star">*</span></label>
+                                <input type="text" value={checklistForm.area} onChange={(e) => setChecklistForm({ ...checklistForm, area: e.target.value })} required />
+                              </div>
+                              <div className="form-field">
+                                <label>Horómetro <span className="required-star">*</span></label>
+                                <input type="number" min="0" step="0.1" value={checklistForm.horometro} onChange={(e) => setChecklistForm({ ...checklistForm, horometro: e.target.value })} required />
+                              </div>
+                              <div className="form-field">
+                                <label>Kilometraje <span className="required-star">*</span></label>
+                                <input type="number" min="0" value={checklistForm.kilometraje} onChange={(e) => setChecklistForm({ ...checklistForm, kilometraje: e.target.value })} required />
+                              </div>
+                              <div className="form-field">
+                                <label>Vencimiento RT</label>
+                                <input type="date" value={checklistForm.vencimientoRT} onChange={(e) => setChecklistForm({ ...checklistForm, vencimientoRT: e.target.value })} />
+                              </div>
+                              <div className="form-field">
+                                <label>Vencimiento Análisis de Gases</label>
+                                <input type="date" value={checklistForm.vencimientoGases} onChange={(e) => setChecklistForm({ ...checklistForm, vencimientoGases: e.target.value })} />
+                              </div>
+                              <div className="form-field">
+                                <label>Hora Sanitización Equipo</label>
+                                <input type="time" value={checklistForm.horaSanitizacion} onChange={(e) => setChecklistForm({ ...checklistForm, horaSanitizacion: e.target.value })} />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Steps 2-5: Grids of checklist items */}
+                        {checklistStep === 2 && (
+                          <ChecklistSectionGrid 
+                            title="2. Generalidades (Camión)"
+                            items={CHECKLIST_ITEMS.generalidades}
+                            stateKey="generalidades"
+                            options={['Bueno', 'Malo', 'Observación']}
+                            form={checklistForm}
+                            setForm={setChecklistForm}
+                          />
+                        )}
+
+                        {checklistStep === 3 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+                            <ChecklistSectionGrid 
+                              title="3. Sistema de Automatización"
+                              items={CHECKLIST_ITEMS.sistemaAutomatizacion}
+                              stateKey="sistemaAutomatizacion"
+                              options={['Bueno', 'Malo', 'Observación']}
+                              form={checklistForm}
+                              setForm={setChecklistForm}
+                            />
+                            <ChecklistSectionGrid 
+                              title="4. Aspectos Mecánicos"
+                              items={CHECKLIST_ITEMS.aspectosMecanicos}
+                              stateKey="aspectosMecanicos"
+                              options={['Bueno', 'Malo', 'Observación']}
+                              form={checklistForm}
+                              setForm={setChecklistForm}
+                            />
+                          </div>
+                        )}
+
+                        {checklistStep === 4 && (
+                          <ChecklistSectionGrid 
+                            title="5. Equipamiento de Seguridad"
+                            items={CHECKLIST_ITEMS.equipamiento}
+                            stateKey="equipamiento"
+                            options={['Bueno', 'Malo', 'Observación']}
+                            form={checklistForm}
+                            setForm={setChecklistForm}
+                          />
+                        )}
+
+                        {checklistStep === 5 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+                            <ChecklistSectionGrid 
+                              title="6. Documentación Personal del Conductor"
+                              items={CHECKLIST_ITEMS.documentacionPersonal}
+                              stateKey="documentacionPersonal"
+                              options={['Cumple', 'No Cumple', 'Observación']}
+                              form={checklistForm}
+                              setForm={setChecklistForm}
+                            />
+                            <ChecklistSectionGrid 
+                              title="7. Requisitos Camión Tanque"
+                              items={CHECKLIST_ITEMS.camionTanque}
+                              stateKey="camionTanque"
+                              options={['Cumple', 'No Cumple', 'Observación']}
+                              form={checklistForm}
+                              setForm={setChecklistForm}
+                            />
+                          </div>
+                        )}
+
+                        {/* Step 6: Observations and signatures */}
+                        {checklistStep === 6 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                            <h4 style={{ margin: 0, color: 'var(--primary-color)', fontSize: '14px', fontWeight: '800' }}>8. Cierre, Observaciones y Firmas</h4>
+                            
+                            <div className="form-field">
+                              <label>Observaciones Adicionales / Comentarios</label>
+                              <textarea 
+                                value={checklistForm.observaciones} 
+                                onChange={(e) => setChecklistForm({ ...checklistForm, observaciones: e.target.value })} 
+                                placeholder="Escriba aquí observaciones sobre fallas encontradas..."
+                                rows={3}
+                                style={{ width: '100%', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '8px', fontSize: '13px' }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginTop: '10px' }}>
+                              <div style={{ border: '1px solid var(--card-border)', borderRadius: '10px', padding: '15px', background: '#f8fafc' }}>
+                                <span style={{ fontSize: '13px', fontWeight: '800', display: 'block', marginBottom: '8px', color: 'var(--text-main)' }}>Firma Conductor (Ejecutor)</span>
+                                <SignaturePad 
+                                  value={checklistForm.firmaConductor} 
+                                  onChange={(val) => setChecklistForm({ ...checklistForm, firmaConductor: val })}
+                                  placeholder="Dibuje aquí firma de Conductor"
+                                />
+                              </div>
+                              <div style={{ border: '1px solid var(--card-border)', borderRadius: '10px', padding: '15px', background: '#f8fafc' }}>
+                                <span style={{ fontSize: '13px', fontWeight: '800', display: 'block', marginBottom: '8px', color: 'var(--text-main)' }}>Firma Supervisor Autorizador</span>
+                                <SignaturePad 
+                                  value={checklistForm.firmaSupervisor} 
+                                  onChange={(val) => setChecklistForm({ ...checklistForm, firmaSupervisor: val })}
+                                  placeholder="Dibuje aquí firma de Supervisor"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Critical Controls Warning Banner */}
+                        {checkCriticalControlFailure() && (
+                          <div 
+                            style={{ 
+                              marginTop: '20px', 
+                              padding: '12px 16px', 
+                              background: '#fef2f2', 
+                              border: '1.5px solid #f87171', 
+                              borderRadius: '8px', 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: '10px',
+                              animation: 'pulse 2s infinite'
+                            }}
+                          >
+                            <span className="material-symbols-outlined" style={{ color: '#ef4444', fontSize: '24px' }}>warning</span>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontSize: '13px', fontWeight: '800', color: '#991b1b' }}>
+                                ADVERTENCIA DE CONTROL CRÍTICO (RC)
+                              </span>
+                              <span style={{ fontSize: '12px', color: '#b91c1c', fontWeight: '600' }}>
+                                Se han reportado fallas en un punto crítico de control. El camión tanque quedará en estado RECHAZADO y no podrá salir a faena.
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="modal-footer" style={{ borderTop: '1px solid var(--card-border)', padding: '15px 20px', display: 'flex', justifyContent: 'space-between' }}>
+                        <button 
+                          type="button"
+                          className="btn-secondary" 
+                          onClick={() => {
+                            if (checklistStep > 1) setChecklistStep(checklistStep - 1);
+                            else setShowChecklistModal(false);
+                          }}
+                        >
+                          {checklistStep === 1 ? 'Cancelar' : 'Atrás'}
+                        </button>
+                        <div>
+                          {checklistStep < 6 ? (
+                            <button 
+                              type="button"
+                              className="btn-primary" 
+                              onClick={() => {
+                                if (checklistStep === 1) {
+                                  if (!checklistForm.conductor || !checklistForm.numeralMeter || !checklistForm.supervisorCargo || !checklistForm.area || !checklistForm.horometro || !checklistForm.kilometraje) {
+                                    alert('Por favor complete todos los campos obligatorios de la cabecera.');
+                                    return;
+                                  }
+                                }
+                                setChecklistStep(checklistStep + 1);
+                              }}
+                            >
+                              Siguiente
+                            </button>
+                          ) : (
+                            <button 
+                              type="button"
+                              className="btn-primary" 
+                              onClick={handleSaveChecklist}
+                              style={{ background: checkCriticalControlFailure() ? 'var(--error-red)' : 'var(--success-green)', border: 'none', color: 'white' }}
+                            >
+                              {checkCriticalControlFailure() ? 'Registrar con Falla RC' : 'Finalizar y Aprobar'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* MODAL: VER DETALLE DE CHECKLIST COMPLETADO */}
+                {selectedChecklistForView && (
+                  <div className="modal-overlay" style={{ zIndex: 130, overflowY: 'auto', padding: '20px' }}>
+                    <div className="modal-container large" style={{ animation: 'fadeIn 0.3s ease', maxWidth: '850px', width: '100%' }}>
+                      <div className="modal-header" style={{ borderBottom: '1px solid var(--card-border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span className="material-symbols-outlined" style={{ color: selectedChecklistForView.estadoCumplimiento === 'APROBADO' ? 'var(--success-green)' : 'var(--error-red)' }}>
+                            {selectedChecklistForView.estadoCumplimiento === 'APROBADO' ? 'check_circle' : 'cancel'}
+                          </span>
+                          <h3 style={{ margin: 0 }}>Reporte Check List Diario: {selectedChecklistForView.patenteCamion}</h3>
+                        </div>
+                        <button className="action-icon-btn" onClick={() => setSelectedChecklistForView(null)} style={{ fontSize: '24px' }}>×</button>
+                      </div>
+
+                      <div className="modal-body" style={{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', padding: '20px' }}>
+                        {/* Stamp */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                          <div>
+                            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>ID Checklist: {selectedChecklistForView.id}</span>
+                            <h4 style={{ margin: '4px 0 0 0', fontSize: '15px', fontWeight: '800', color: 'var(--text-main)' }}>
+                              Fecha: {new Date(selectedChecklistForView.fecha).toLocaleString('es-CL')}
+                            </h4>
+                          </div>
+                          <div 
+                            style={{
+                              padding: '8px 16px',
+                              borderRadius: '8px',
+                              fontWeight: '800',
+                              fontSize: '14px',
+                              border: '1.5px solid ' + (selectedChecklistForView.estadoCumplimiento === 'APROBADO' ? 'var(--success-green)' : 'var(--error-red)'),
+                              background: selectedChecklistForView.estadoCumplimiento === 'APROBADO' ? 'var(--success-bg)' : 'var(--error-bg)',
+                              color: selectedChecklistForView.estadoCumplimiento === 'APROBADO' ? 'var(--success-green)' : 'var(--error-red)'
+                            }}
+                          >
+                            {selectedChecklistForView.estadoCumplimiento === 'APROBADO' ? '✓ TRÁNSITO AUTORIZADO' : '✗ VEHÍCULO RECHAZADO / RETENIDO'}
+                          </div>
+                        </div>
+
+                        {/* Cabecera Info Grid */}
+                        <div className="paper-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '20px' }}>
+                          {[
+                            { label: 'Conductor', val: selectedChecklistForView.conductor },
+                            { label: 'Patente Camión', val: selectedChecklistForView.patenteCamion },
+                            { label: 'Turno', val: selectedChecklistForView.turno },
+                            { label: 'Numeral Meter', val: selectedChecklistForView.numeralMeter },
+                            { label: 'Supervisor a Cargo', val: selectedChecklistForView.supervisorCargo },
+                            { label: 'Área', val: selectedChecklistForView.area },
+                            { label: 'Horómetro', val: `${selectedChecklistForView.horometro} hrs` },
+                            { label: 'Kilometraje', val: `${selectedChecklistForView.kilometraje} km` },
+                            { label: 'Venc. Revisión Técnica', val: selectedChecklistForView.vencimientoRT || 'No registrado' },
+                            { label: 'Venc. Análisis Gases', val: selectedChecklistForView.vencimientoGases || 'No registrado' },
+                            { label: 'Sanitización Equipo', val: selectedChecklistForView.horaSanitizacion || 'No registrado' }
+                          ].map((item, idx) => (
+                            <div key={idx} style={{ padding: '8px 12px', border: '1px solid var(--card-border)', borderRadius: '6px', background: '#f8fafc' }}>
+                              <span style={{ display: 'block', fontSize: '10.5px', color: 'var(--text-secondary)', fontWeight: '600' }}>{item.label}</span>
+                              <span style={{ fontSize: '12.5px', fontWeight: '700', color: 'var(--text-main)' }}>{item.val}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Table detailing failed or observed items */}
+                        <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: '800', color: 'var(--primary-color)' }}>
+                          Resumen de Estado de Componentes (1 - 70)
+                        </h4>
+                        
+                        <div className="table-wrapper" style={{ marginBottom: '20px' }}>
+                          <table className="data-table" style={{ width: '100%', fontSize: '12px' }}>
+                            <thead>
+                              <tr>
+                                <th style={{ width: '8%' }}>N°</th>
+                                <th style={{ width: '52%' }}>Componente / Documento</th>
+                                <th style={{ width: '15%', textAlign: 'center' }}>Estado</th>
+                                <th style={{ width: '25%' }}>Observación</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {[
+                                { catKey: 'generalidades', list: CHECKLIST_ITEMS.generalidades },
+                                { catKey: 'sistemaAutomatizacion', list: CHECKLIST_ITEMS.sistemaAutomatizacion },
+                                { catKey: 'aspectosMecanicos', list: CHECKLIST_ITEMS.aspectosMecanicos },
+                                { catKey: 'equipamiento', list: CHECKLIST_ITEMS.equipamiento },
+                                { catKey: 'documentacionPersonal', list: CHECKLIST_ITEMS.documentacionPersonal },
+                                { catKey: 'camionTanque', list: CHECKLIST_ITEMS.camionTanque }
+                              ].map(({ catKey, list }) => {
+                                const parsedCat = JSON.parse(selectedChecklistForView[catKey] || '{}');
+                                return list.map((item) => {
+                                  const val = parsedCat[item.n] || { estado: '-', obs: '' };
+                                  const isFailure = val.estado === 'Malo' || val.estado === 'No Cumple';
+                                  
+                                  return (
+                                    <tr key={item.n} style={{ background: isFailure ? '#fef2f2' : 'transparent' }}>
+                                      <td style={{ fontWeight: 'bold' }}>{item.n}</td>
+                                      <td style={{ fontWeight: item.rc ? '700' : '400', color: item.rc ? '#b91c1c' : 'inherit' }}>
+                                        {item.label}
+                                        {item.rc && <span style={{ color: '#ef4444', fontWeight: 'bold', marginLeft: '6px', fontSize: '9px', background: '#fef2f2', padding: '1px 3px', borderRadius: '3px', border: '1px solid #f87171' }}>RC</span>}
+                                      </td>
+                                      <td style={{ textAlign: 'center', fontWeight: '700', color: isFailure ? '#ef4444' : val.estado === 'Bueno' || val.estado === 'Cumple' ? 'var(--success-green)' : '#64748b' }}>
+                                        {val.estado}
+                                      </td>
+                                      <td style={{ fontStyle: val.obs ? 'normal' : 'italic', color: val.obs ? 'var(--text-main)' : '#94a3b8' }}>
+                                        {val.obs || '-'}
+                                      </td>
+                                    </tr>
+                                  );
+                                });
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Additional observations */}
+                        {selectedChecklistForView.observaciones && (
+                          <div style={{ padding: '12px 15px', border: '1px solid var(--card-border)', borderRadius: '8px', background: '#fffbeb', marginBottom: '20px' }}>
+                            <span style={{ display: 'block', fontSize: '11px', color: '#b45309', fontWeight: '700', marginBottom: '4px' }}>Observaciones del Reporte</span>
+                            <p style={{ margin: 0, fontSize: '12.5px', color: '#78350f' }}>{selectedChecklistForView.observaciones}</p>
+                          </div>
+                        )}
+
+                        {/* Signatures */}
+                        <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: '800', color: 'var(--primary-color)' }}>
+                          Firmas Registradas
+                        </h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+                          <div style={{ border: '1px solid var(--card-border)', borderRadius: '8px', padding: '12px', background: '#f8fafc', textAlign: 'center' }}>
+                            <span style={{ fontSize: '12px', fontWeight: '700', display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>Firma Conductor</span>
+                            {selectedChecklistForView.firmaConductor ? (
+                              <img src={selectedChecklistForView.firmaConductor} alt="Firma Conductor" style={{ maxHeight: '100px', maxWidth: '100%', border: '1px solid #cbd5e1', borderRadius: '4px', background: 'white' }} />
+                            ) : (
+                              <span style={{ fontStyle: 'italic', fontSize: '12px', color: '#94a3b8' }}>Sin firma registrada</span>
+                            )}
+                          </div>
+                          <div style={{ border: '1px solid var(--card-border)', borderRadius: '8px', padding: '12px', background: '#f8fafc', textAlign: 'center' }}>
+                            <span style={{ fontSize: '12px', fontWeight: '700', display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>Firma Supervisor</span>
+                            {selectedChecklistForView.firmaSupervisor ? (
+                              <img src={selectedChecklistForView.firmaSupervisor} alt="Firma Supervisor" style={{ maxHeight: '100px', maxWidth: '100%', border: '1px solid #cbd5e1', borderRadius: '4px', background: 'white' }} />
+                            ) : (
+                              <span style={{ fontStyle: 'italic', fontSize: '12px', color: '#94a3b8' }}>Sin firma registrada</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="modal-footer" style={{ borderTop: '1px solid var(--card-border)', padding: '15px 20px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                        <button className="btn-secondary" onClick={() => setSelectedChecklistForView(null)}>Cerrar</button>
+                        <button className="btn-primary" onClick={() => window.print()}>🖨️ Imprimir Reporte</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
       {showProfileModal && currentUser && (
         <div className="modal-overlay" style={{ padding: '40px 20px' }}>
@@ -4273,6 +6734,16 @@ export default function App() {
               <div className="form-field">
                 <label>Cargo Organizacional</label>
                 <input type="text" value={profileCargo} onChange={(e) => setProfileCargo(e.target.value)} />
+              </div>
+              <div className="form-field">
+                <label>Contraseña de Acceso <span className="required-star">*</span></label>
+                <input 
+                  type="password" 
+                  placeholder="Ingrese nueva contraseña" 
+                  value={profilePassword} 
+                  onChange={(e) => setProfilePassword(e.target.value)} 
+                  required 
+                />
               </div>
               <div className="form-field">
                 <label>Foto de Perfil (Subir imagen)</label>
