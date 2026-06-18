@@ -905,48 +905,23 @@ export default function App() {
   ]);
 
   // --- BASE DE DATOS DE COLABORADORES ---
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('mies_users');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
-    }
-    return [
-      {
-        id: 'usr-1',
-        usuario: 'admin',
-        nombre: 'Constanza Aránguiz',
-        cargo: 'Jefa Nacional HSE - MIES',
-        email: 'caranguiz@mies.cl',
-        perfil: 'Administrador',
-        foto: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=150',
-        password: 'admin123'
-      },
-      {
-        id: 'usr-2',
-        usuario: 'supervisor',
-        nombre: 'Ricardo Alarcón',
-        cargo: 'Supervisor HSE Zona Norte',
-        email: 'ralarcon@mies.cl',
-        perfil: 'Supervisor',
-        foto: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=150',
-        password: 'admin123'
-      },
-      {
-        id: 'usr-3',
-        usuario: 'operador',
-        nombre: 'Claudio Tapia',
-        cargo: 'Operario Mayor Electricista',
-        email: 'ctapia@mies.cl',
-        perfil: 'Operador',
-        foto: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=150',
-        password: 'admin123'
+  const [users, setUsers] = useState<User[]>([]);
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/users`);
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data || []);
       }
-    ];
-  });
+    } catch (err) {
+      console.error('Error fetching users:', err);
+    }
+  };
 
   useEffect(() => {
-    localStorage.setItem('mies_users', JSON.stringify(users));
-  }, [users]);
+    fetchUsers();
+  }, []);
 
   useEffect(() => {
     if (currentUser) {
@@ -1142,6 +1117,7 @@ export default function App() {
       fetchARTs();
       fetchVehiculos();
       fetchMantenedores();
+      fetchUsers();
     }
   }, [isLoggedIn]);
 
@@ -1309,42 +1285,72 @@ export default function App() {
     setShowUserModal(true);
   };
 
-  const handleSaveUser = () => {
+  const handleSaveUser = async () => {
     if (!formUserNombre || !formUserUsuario || !formUserEmail) return;
 
-    if (editModeUser) {
-      const updatedUser: User = {
-        ...editModeUser,
-        nombre: formUserNombre,
-        usuario: formUserUsuario,
-        cargo: formUserCargo,
-        email: formUserEmail,
-        perfil: formUserPerfil,
-        foto: formUserFoto,
-        vehiculosAsociados: formUserVehiculos,
-        password: formUserPassword,
-        screens: formUserScreens
-      };
-      setUsers(users.map(u => u.id === editModeUser.id ? updatedUser : u));
-      if (currentUser && currentUser.id === editModeUser.id) {
-        setCurrentUser(updatedUser);
+    try {
+      if (editModeUser) {
+        const payload = {
+          nombre: formUserNombre,
+          usuario: formUserUsuario,
+          cargo: formUserCargo,
+          email: formUserEmail,
+          perfil: formUserPerfil,
+          foto: formUserFoto,
+          vehiculosAsociados: formUserVehiculos,
+          password: formUserPassword,
+          screens: formUserScreens
+        };
+
+        const res = await fetch(`${API_BASE_URL}/users/${editModeUser.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          const updated = await res.json();
+          setUsers(users.map(u => u.id === editModeUser.id ? updated : u));
+          if (currentUser && currentUser.id === editModeUser.id) {
+            setCurrentUser(updated);
+          }
+          setShowUserModal(false);
+        } else {
+          const errData = await res.json();
+          alert(errData.mensaje || 'Error al actualizar colaborador.');
+        }
+      } else {
+        const payload = {
+          nombre: formUserNombre,
+          usuario: formUserUsuario,
+          cargo: formUserCargo,
+          email: formUserEmail,
+          perfil: formUserPerfil,
+          foto: formUserFoto,
+          vehiculosAsociados: formUserVehiculos,
+          password: formUserPassword,
+          screens: formUserScreens
+        };
+
+        const res = await fetch(`${API_BASE_URL}/users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          const newUser = await res.json();
+          setUsers([...users, newUser]);
+          setShowUserModal(false);
+        } else {
+          const errData = await res.json();
+          alert(errData.mensaje || 'Error al crear colaborador.');
+        }
       }
-    } else {
-      const newUser: User = {
-        id: `usr-${Date.now()}`,
-        nombre: formUserNombre,
-        usuario: formUserUsuario,
-        cargo: formUserCargo,
-        email: formUserEmail,
-        perfil: formUserPerfil,
-        foto: formUserFoto,
-        vehiculosAsociados: formUserVehiculos,
-        password: formUserPassword,
-        screens: formUserScreens
-      };
-      setUsers([...users, newUser]);
+    } catch (err) {
+      console.error(err);
+      alert('Error de red al guardar el colaborador.');
     }
-    setShowUserModal(false);
   };
 
   const handleOpenProfileModal = () => {
@@ -1358,29 +1364,61 @@ export default function App() {
     }
   };
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     if (!currentUser || !profileNombre || !profileEmail) return;
 
-    const updatedUser: User = {
-      ...currentUser,
-      nombre: profileNombre,
-      cargo: profileCargo,
-      email: profileEmail,
-      foto: profileFoto,
-      password: profilePassword
-    };
+    try {
+      const payload = {
+        nombre: profileNombre,
+        cargo: profileCargo,
+        email: profileEmail,
+        foto: profileFoto,
+        password: profilePassword
+      };
 
-    setCurrentUser(updatedUser);
-    setUsers(users.map(u => u.id === currentUser.id ? updatedUser : u));
-    setShowProfileModal(false);
+      const res = await fetch(`${API_BASE_URL}/users/${currentUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        setCurrentUser(updated);
+        setUsers(users.map(u => u.id === currentUser.id ? updated : u));
+        setShowProfileModal(false);
+      } else {
+        const errData = await res.json();
+        alert(errData.mensaje || 'Error al actualizar perfil.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error de red al actualizar tu perfil.');
+    }
   };
 
-  const handleDeleteUser = (id: string) => {
+  const handleDeleteUser = async (id: string) => {
     if (id === currentUser?.id) {
       alert('Operación denegada: No es posible auto-eliminarse de la sesión activa.');
       return;
     }
-    setUsers(users.filter(u => u.id !== id));
+    if (!window.confirm('¿Está seguro de que desea eliminar este colaborador de forma permanente?')) {
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        setUsers(users.filter(u => u.id !== id));
+      } else {
+        const errData = await res.json();
+        alert(errData.mensaje || 'Error al eliminar colaborador.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error de red al eliminar colaborador.');
+    }
   };
 
   // --- WIZARD FORM WIDGET IMPLEMENTATION ---
